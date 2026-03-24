@@ -52,7 +52,7 @@ Stage 5: 보고서 생성
 - 기본 기업 메타데이터 수집
 - 하위 분석을 위한 관련 문서 수집
 - 기업 프로파일 정규화
-- **출력**: `StartupProfile`
+- **출력**: `[list of IN]`
 
 #### **2. TechnologySummaryAgent** (Stage 2, 병렬)
 - 핵심 기술 및 혁신성 요약
