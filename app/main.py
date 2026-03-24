@@ -22,6 +22,29 @@ def setup_logging(config: Config):
     )
 
 
+def initialize_retriever(logger: logging.Logger) -> Retriever:
+    """
+    Initialize retriever from persisted FAISS index if available.
+
+    Falls back to an empty in-memory retriever when index files are missing
+    or loading fails.
+    """
+    index_dir = Path(__file__).resolve().parent.parent / "data" / "faiss_index"
+    index_file = index_dir / "index.faiss"
+    chunks_file = index_dir / "chunks.json"
+
+    if index_file.exists() and chunks_file.exists():
+        try:
+            retriever = Retriever.load_index(str(index_dir))
+            logger.info(f"Loaded FAISS index from {index_dir}")
+            return retriever
+        except Exception as e:
+            logger.warning(f"Failed to load FAISS index from {index_dir}: {e}")
+
+    logger.info("FAISS index not found; starting with empty retriever")
+    return Retriever()
+
+
 def main(startup_names: List[str],
          startup_infos: Optional[dict] = None,
          document_paths: Optional[List[str]] = None):
@@ -41,8 +64,8 @@ def main(startup_names: List[str],
     logger.info("AgTech Investment Evaluation System Starting")
     logger.info(f"Configuration: {config.to_dict()}")
 
-    # Initialize retriever
-    retriever = Retriever()
+    # Initialize retriever (prefer persisted FAISS index)
+    retriever = initialize_retriever(logger)
 
     # Load documents if provided
     if document_paths:
