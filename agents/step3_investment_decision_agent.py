@@ -13,11 +13,45 @@ from .base_agent import BaseAgent
 class InvestmentDecisionAgent(BaseAgent):
     """Agent responsible for making investment recommendations."""
 
+    MIN_QUALIFIED_SCORE = 0.60
+    STRONG_QUALIFIED_SCORE = 0.75
+
     def __init__(self):
         super().__init__(
             name="InvestmentDecisionAgent",
             description="Integrates all analysis and produces investment decision",
         )
+
+    @classmethod
+    def _evaluate_top_companies(
+        cls,
+        competitor_analysis: CompetitorAnalysisResult
+    ) -> tuple[list[str], list[str], dict[str, float]]:
+        """
+        Evaluate top-3 companies against step3 score criteria.
+
+        Criteria:
+        - qualified: total_score >= 0.60
+        - strong qualified: total_score >= 0.75
+        """
+        top_companies = competitor_analysis.comparable_competitors[:3]
+        top_scores = competitor_analysis.comparable_competitor_scores or {}
+
+        scorecard = {
+            company_name: float(top_scores.get(company_name, 0.0))
+            for company_name in top_companies
+        }
+        qualified_companies = [
+            company_name
+            for company_name, score in scorecard.items()
+            if score >= cls.MIN_QUALIFIED_SCORE
+        ]
+        strong_qualified_companies = [
+            company_name
+            for company_name, score in scorecard.items()
+            if score >= cls.STRONG_QUALIFIED_SCORE
+        ]
+        return qualified_companies, strong_qualified_companies, scorecard
 
     def execute(self,
                startup: StartupProfile,
@@ -77,6 +111,12 @@ class InvestmentDecisionAgent(BaseAgent):
             )
             recommendation = InvestmentRecommendation(recommendation_str)
 
+            # Evaluate the top-3 companies returned by step2.
+            qualified_companies, strong_qualified_companies, scorecard = self._evaluate_top_companies(
+                competitor_analysis
+            )
+            startup_qualified = startup.name in qualified_companies
+
             # Identify key strengths
             strengths = []
             if tech_analysis.novelty_score > 0.65:
@@ -87,6 +127,15 @@ class InvestmentDecisionAgent(BaseAgent):
                 strengths.append("Significant agricultural impact")
             if data_moat_analysis.moat_strength_score > 0.60:
                 strengths.append("Defendable competitive position")
+            if startup_qualified:
+                strengths.append(
+                    f"Passed step3 qualification threshold ({self.MIN_QUALIFIED_SCORE:.2f}) "
+                    f"within top-3 companies"
+                )
+            if startup.name in strong_qualified_companies:
+                strengths.append(
+                    f"Strongly qualified in top-3 cohort ({self.STRONG_QUALIFIED_SCORE:.2f}+)"
+                )
 
             # Identify key risks
             risks = []
@@ -98,6 +147,11 @@ class InvestmentDecisionAgent(BaseAgent):
                 risks.append(f"Multiple critical information gaps ({critical_gaps})")
             if competitor_analysis.competitive_advantage_score < 0.50:
                 risks.append("Weak competitive positioning")
+            if not startup_qualified:
+                risks.append(
+                    f"Did not meet step3 qualification threshold ({self.MIN_QUALIFIED_SCORE:.2f}) "
+                    "within top-3 companies"
+                )
 
             # Collect all evidence
             all_evidence = (tech_analysis.evidence + market_analysis.evidence +
@@ -122,12 +176,17 @@ class InvestmentDecisionAgent(BaseAgent):
                     tech_analysis.missing_information + market_analysis.missing_information +
                     impact_analysis.missing_information + data_moat_analysis.missing_information
                 ],
+                evaluated_top_companies=competitor_analysis.comparable_competitors[:3],
+                qualified_companies=qualified_companies,
+                company_scorecard=scorecard,
             )
 
             # Build rationale
             decision.rationale = f"Decision: {recommendation_str.upper()}. " \
                                f"Overall Score: {overall_score:.2f}. " \
                                f"Confidence: {confidence:.2f}. " \
+                               f"Qualified companies (>= {self.MIN_QUALIFIED_SCORE:.2f}): " \
+                               f"{', '.join(qualified_companies) if qualified_companies else 'None'}. " \
                                f"Key strengths: {', '.join(strengths[:2])}. " \
                                f"Key risks: {', '.join(risks[:2])}"
 

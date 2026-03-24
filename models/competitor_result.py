@@ -9,6 +9,7 @@ class CompetitorAnalysisResult:
     """Result from Competitor Comparison Agent."""
 
     comparable_competitors: list[str] = field(default_factory=list)
+    comparable_competitor_scores: dict[str, float] = field(default_factory=dict)
     technology_differentiation: str = ""
     technology_differentiation_score: float = 0.0  # 0.0 to 1.0
     market_position_analysis: str = ""

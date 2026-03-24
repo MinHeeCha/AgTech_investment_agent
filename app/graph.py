@@ -180,6 +180,21 @@ def build_graph(retriever: Retriever, max_workers: int = 4):
         """기업별로 competitor → decision → report 순차 실행."""
         logger.info("[Step 2–4] Downstream pipeline")
         results = []
+        step1_company_scores: dict[str, float] = {}
+
+        # Build Step 1 composite score for each company.
+        # This score is used by step2 to select top-3 competitors.
+        for company_name in state["startup_names"]:
+            tech_result = state["tech_analyses"][company_name]
+            market_result = state["market_analyses"][company_name]
+            tech_score = (
+                tech_result.novelty_score + tech_result.defensibility_score
+            ) / 2.0
+            market_score = (
+                market_result.market_growth_potential + market_result.commercial_feasibility_score
+            ) / 2.0
+            step1_company_scores[company_name] = (tech_score + market_score) / 2.0
+
         for name in state["startup_names"]:
             profile = _profile(name)
             tech    = state["tech_analyses"][name]
@@ -187,7 +202,13 @@ def build_graph(retriever: Retriever, max_workers: int = 4):
             impact  = state["impact_analyses"][name]
             moat    = state["moat_analyses"][name]
 
-            competitor = competitor_agent.execute(profile, tech, market, retriever)
+            competitor = competitor_agent.execute(
+                profile,
+                tech,
+                market,
+                retriever,
+                step1_company_scores=step1_company_scores,
+            )
             decision   = decision_agent.execute(profile, tech, market, impact, moat, competitor)
             evaluation = report_agent.execute(profile, tech, market, impact, moat, competitor, decision)
             results.append(evaluation)
