@@ -1,7 +1,6 @@
 """Document chunking strategies."""
 
 import re
-from typing import Optional
 from dataclasses import dataclass
 
 # PDFs to chunk by 1/3 page; all others are chunked 1 page per chunk
@@ -25,17 +24,10 @@ class Chunk:
 
 
 class DocumentChunker:
-    """Handles document chunking with various strategies."""
+    """Handles document chunking by page boundaries."""
 
-    def __init__(
-        self,
-        chunk_size: int = 1024,
-        overlap: int = 100,
-        preserve_sentences: bool = True,
-    ):
-        self.chunk_size = chunk_size
-        self.overlap = overlap
-        self.preserve_sentences = preserve_sentences
+    def __init__(self):
+        pass
 
     # ------------------------------------------------------------------
     # Page-aware chunking (primary strategy for PDFs)
@@ -174,59 +166,3 @@ class DocumentChunker:
         parts.append(text[start:])
         return parts
 
-    # ------------------------------------------------------------------
-    # Original character-based chunking (kept for non-PDF use)
-    # ------------------------------------------------------------------
-
-    def chunk_text(
-        self, text: str, source_document: str, metadata: Optional[dict] = None
-    ) -> list[Chunk]:
-        if metadata is None:
-            metadata = {}
-
-        chunks = []
-        start_idx = 0
-        chunk_index = 0
-
-        while start_idx < len(text):
-            end_idx = min(start_idx + self.chunk_size, len(text))
-
-            if (
-                end_idx < len(text)
-                and self.preserve_sentences
-                and end_idx > start_idx + 100
-            ):
-                for pos in range(end_idx, start_idx + 100, -1):
-                    if text[pos] in ".!?":
-                        end_idx = pos + 1
-                        break
-
-            chunk_text = text[start_idx:end_idx].strip()
-
-            if chunk_text:
-                chunks.append(
-                    Chunk(
-                        content=chunk_text,
-                        source_document=source_document,
-                        chunk_index=chunk_index,
-                        start_char=start_idx,
-                        end_char=end_idx,
-                        metadata=metadata.copy(),
-                    )
-                )
-                chunk_index += 1
-
-            start_idx = max(start_idx + self.chunk_size - self.overlap, end_idx)
-            if start_idx >= len(text):
-                break
-
-        return chunks
-
-    def chunk_documents(self, documents: list[dict]) -> list[Chunk]:
-        all_chunks = []
-        for doc in documents:
-            chunks = self.chunk_text(
-                doc["content"], doc["source"], doc.get("metadata", {})
-            )
-            all_chunks.extend(chunks)
-        return all_chunks

@@ -24,25 +24,10 @@ class Retriever:
         self,
         vectorstore: Optional[VectorStore] = None,
         embedder: Optional[BGEM3Embedder] = None,
-        chunk_size: int = 900,
-        chunk_overlap: int = 180,
     ):
-        """
-        Initialize the retriever.
-
-        Args:
-            vectorstore: Optional pre-built VectorStore instance
-            embedder: Optional pre-loaded BGEM3Embedder instance
-            chunk_size: Target chunk size in characters
-            chunk_overlap: Overlap between consecutive chunks in characters
-        """
         self.vectorstore = vectorstore or VectorStore(embedding_dim=BGEM3Embedder.EMBEDDING_DIM)
         self.embedder = embedder or BGEM3Embedder()
-        self.chunker = DocumentChunker(
-            chunk_size=chunk_size,
-            overlap=chunk_overlap,
-            preserve_sentences=True,
-        )
+        self.chunker = DocumentChunker()
         self.documents: list[dict] = []
 
     def add_documents(self, documents: list[dict]):
@@ -147,7 +132,7 @@ class Retriever:
         instance = cls.__new__(cls)
         instance.vectorstore = store
         instance.embedder = embedder or BGEM3Embedder()
-        instance.chunker = DocumentChunker(chunk_size=900, overlap=180)
+        instance.chunker = DocumentChunker()
         instance.documents = []
         return instance
 
