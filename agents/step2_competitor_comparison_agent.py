@@ -120,13 +120,14 @@ class CompetitorComparisonAgent(BaseAgent):
         try:
             self.log_info(f"Analyzing competitors for {startup.name}")
 
-            tech_strength = self._clamp(
-                (tech_analysis.novelty_score + tech_analysis.defensibility_score) / 2.0
-            )
-            market_strength = self._clamp(
-                (market_analysis.market_growth_potential + market_analysis.commercial_feasibility_score) / 2.0
-            )
-            startup_total_score = self._clamp((tech_strength + market_strength) / 2.0)
+            novelty_raw = tech_analysis.novelty_score * 7.5
+            defensibility_raw = tech_analysis.defensibility_score * 7.5
+            market_growth_raw = market_analysis.market_growth_potential * 5.0
+            commercial_raw = market_analysis.commercial_feasibility_score * 5.0
+
+            tech_strength = novelty_raw + defensibility_raw
+            market_strength = market_growth_raw + commercial_raw
+            startup_total_score = tech_strength + market_strength
 
             top_3_companies, sorted_scores, used_step1_scores = self._select_top_3_companies(
                 startup_name=startup.name,
@@ -154,11 +155,11 @@ class CompetitorComparisonAgent(BaseAgent):
                 ),
                 technology_differentiation_score=tech_strength,
                 market_position_analysis=(
-                    f"Step 1 composite score {startup_total_score:.2f}; {rank_text} "
+                    f"Step 1 composite score {startup_total_score:.2f}/25; {rank_text} "
                     f"among {len(sorted_scores)} companies"
                 ),
-                relative_barriers_to_entry=tech_analysis.defensibility_score,
-                competitive_advantage_score=self._clamp((0.6 * tech_strength) + (0.4 * market_strength)),
+                relative_barriers_to_entry=defensibility_raw,     # 0~7.5
+                competitive_advantage_score=startup_total_score,  # 0~25
             )
 
             # Identify relative strengths
