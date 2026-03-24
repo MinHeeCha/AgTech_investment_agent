@@ -88,3 +88,21 @@ class DataMoatAnalysisResult:
     evidence: list[EvidenceItem] = field(default_factory=list)
     missing_information: list[str] = field(default_factory=list)
     summary: str = ""
+
+    moat_type: str = "data"                  # "data" | "ip"
+    dataset_size_level: str = "small"        # "large" | "medium" | "small"
+    dataset_size_description: str = ""
+    contract_level: str = "none"             # "exclusive" | "non_exclusive" | "none"
+    contract_description: str = ""
+    network_effect_level: str = "none"       # "auto" | "manual" | "none"
+    network_effect_description: str = ""
+    dataset_size_score: int = 0              # /8
+    exclusive_contract_score: int = 0        # /7
+    network_effect_score: int = 0            # /5
+    total_score: int = 0                     # /20
+
+    # IP 해자 전환 시 사용하는 필드들
+    ip_moat_note: str = ""
+    patent_count: str = "미확인"
+    field_trial_description: str = ""
+    big_corp_partnership: str = ""
