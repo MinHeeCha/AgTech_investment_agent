@@ -162,9 +162,9 @@ class MarketabilityEvaluationAgent(BaseAgent):
 
             result = MarketabilityAnalysisResult(
                 target_market_size=None,
-                market_growth_potential=0.40,
+                market_growth_potential=1,
                 business_model="SaaS subscription and usage-based pricing",
-                commercial_feasibility_score=0.40,
+                commercial_feasibility_score=2,
             )
 
             # Identify customer pain points
@@ -240,11 +240,9 @@ class MarketabilityEvaluationAgent(BaseAgent):
                 sam_score = self._sam_score_from_usd(best_sam_usd)
                 cagr_score = self._cagr_score(best_cagr)
 
-                # Map rubric scores to model fields (0~1)
-                # - market_growth_potential: CAGR-based normalized score
-                # - commercial_feasibility_score: combined SAM+CAGR normalized score
-                result.market_growth_potential = self._clamp(cagr_score / 5.0)
-                result.commercial_feasibility_score = self._clamp((sam_score + cagr_score) / 11.0)
+                # Map rubric scores to model fields (0~11)
+                result.market_growth_potential = cagr_score                     #  1, 3, 5
+                result.commercial_feasibility_score = sam_score + cagr_score    #  2 ~ 11
 
                 # Infer business model hints from retrieved content
                 business_model_signals = []
@@ -279,8 +277,8 @@ class MarketabilityEvaluationAgent(BaseAgent):
             if not result.target_market_size:
                 result.missing_information.append("TAM sizing information not found")
 
-            result.summary = f"Market Growth Potential: {result.market_growth_potential:.2f}. " \
-                           f"Commercial Feasibility: {result.commercial_feasibility_score:.2f}. " \
+            result.summary = f"Market Growth Potential: {result.market_growth_potential}/5. " \
+                           f"Commercial Feasibility: {result.commercial_feasibility_score}/11. " \
                            f"Business Model: {result.business_model}. " \
                            f"(SAM/CAGR rubric applied)"
 
