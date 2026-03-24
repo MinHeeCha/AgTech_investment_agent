@@ -89,22 +89,22 @@ class MarketabilityEvaluationAgent(BaseAgent):
     def _sam_score_from_usd(sam_usd: Optional[float]) -> int:
         """SAM rubric: >=$1B=6, $500M~$1B=4, <$500M=1."""
         if sam_usd is None:
-            return 1
+            return 2
         if sam_usd >= 1_000_000_000:
-            return 6
+            return 14
         if sam_usd >= 500_000_000:
-            return 4
+            return 9
         return 1
 
     @staticmethod
     def _cagr_score(cagr_percent: Optional[float]) -> int:
         """CAGR rubric: >=20%=5, 10~20%=3, <10%=1."""
         if cagr_percent is None:
-            return 1
+            return 2
         if cagr_percent >= 20.0:
-            return 5
+            return 11
         if cagr_percent >= 10.0:
-            return 3
+            return 7
         return 1
 
     @staticmethod
@@ -162,9 +162,9 @@ class MarketabilityEvaluationAgent(BaseAgent):
 
             result = MarketabilityAnalysisResult(
                 target_market_size=None,
-                market_growth_potential=1,
+                market_growth_potential=2,
                 business_model="SaaS subscription and usage-based pricing",
-                commercial_feasibility_score=2,
+                commercial_feasibility_score=4,
             )
 
             # Identify customer pain points
@@ -241,8 +241,8 @@ class MarketabilityEvaluationAgent(BaseAgent):
                 cagr_score = self._cagr_score(best_cagr)
 
                 # Map rubric scores to model fields (0~11)
-                result.market_growth_potential = cagr_score                     #  1, 3, 5
-                result.commercial_feasibility_score = sam_score + cagr_score    #  2 ~ 11
+                result.market_growth_potential = cagr_score                     
+                result.commercial_feasibility_score = sam_score + cagr_score   
 
                 # Infer business model hints from retrieved content
                 business_model_signals = []
@@ -277,8 +277,8 @@ class MarketabilityEvaluationAgent(BaseAgent):
             if not result.target_market_size:
                 result.missing_information.append("TAM sizing information not found")
 
-            result.summary = f"Market Growth Potential: {result.market_growth_potential}/5. " \
-                           f"Commercial Feasibility: {result.commercial_feasibility_score}/11. " \
+            result.summary = f"Market Growth Potential: {result.market_growth_potential}/11. " \
+                           f"Commercial Feasibility: {result.commercial_feasibility_score}/25. " \
                            f"Business Model: {result.business_model}. " \
                            f"(SAM/CAGR rubric applied)"
 

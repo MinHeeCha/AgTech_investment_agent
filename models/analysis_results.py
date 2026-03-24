@@ -25,11 +25,11 @@ class MarketabilityAnalysisResult:
     """Result from Marketability Evaluation Agent."""
 
     target_market_size: Optional[str] = None
-    market_growth_potential: float = 0.0  # 0.0 to 1.0
+    market_growth_potential: int = 0  
     customer_pain_points: list[str] = field(default_factory=list)
     business_model: Optional[str] = None
     adoption_barriers: list[str] = field(default_factory=list)
-    commercial_feasibility_score: float = 0.0  # 0.0 to 1.0
+    commercial_feasibility_score: int = 0
     evidence: list[EvidenceItem] = field(default_factory=list)
     missing_information: list[str] = field(default_factory=list)
     summary: str = ""
