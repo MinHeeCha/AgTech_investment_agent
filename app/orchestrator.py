@@ -81,7 +81,7 @@ class AgentOrchestrator:
                 self.tech_agent.execute, startup, self.retriever
             )
             market_future = executor.submit(
-                self.market_agent.execute, startup, self.retriever
+                self.market_agent.execute, startup.name, self.retriever
             )
             impact_future = executor.submit(
                 self.impact_agent.execute, startup, self.retriever
