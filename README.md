@@ -1,141 +1,141 @@
-# AgTech Startup Investment Evaluation Multi-Agent System
+# AgTech 스타트업 투자 평가 멀티에이전트 시스템
 
-A comprehensive multi-agent AI system for evaluating AgTech startups for investment potential. The system orchestrates 8 specialized agents across 5 sequential stages to analyze technology, market, impact, competitive position, and other critical factors for investment decision-making.
-
----
-
-## Table of Contents
-
-1. [System Architecture](#system-architecture)
-2. [Evaluation Framework](#evaluation-framework)
-3. [Project Structure](#project-structure)
-4. [Installation](#installation)
-5. [Quick Start](#quick-start)
-6. [Usage Examples](#usage-examples)
-7. [Testing](#testing)
-8. [Configuration](#configuration)
-9. [Key Classes](#key-classes)
-10. [Common Tasks](#common-tasks)
-11. [Debugging & Troubleshooting](#debugging--troubleshooting)
-12. [Design Principles](#design-principles)
-13. [Key Features](#key-features)
-14. [Future Enhancements](#future-enhancements)
+AgTech 스타트업의 투자 가능성을 평가하는 종합 멀티에이전트 AI 시스템입니다. 8개의 전문 에이전트를 5단계 순차 파이프라인으로 조율하여 기술력, 시장성, 임팩트, 경쟁 포지션 등 투자 의사결정에 필요한 핵심 요소를 분석합니다.
 
 ---
 
-## System Architecture
+## 목차
 
-### Multi-Agent Workflow
+1. [시스템 아키텍처](#시스템-아키텍처)
+2. [평가 프레임워크](#평가-프레임워크)
+3. [프로젝트 구조](#프로젝트-구조)
+4. [설치](#설치)
+5. [빠른 시작](#빠른-시작)
+6. [사용 예시](#사용-예시)
+7. [테스트](#테스트)
+8. [설정](#설정)
+9. [주요 클래스](#주요-클래스)
+10. [일반 작업](#일반-작업)
+11. [디버깅 및 문제 해결](#디버깅-및-문제-해결)
+12. [설계 원칙](#설계-원칙)
+13. [주요 기능](#주요-기능)
+14. [향후 개선 사항](#향후-개선-사항)
 
-The system follows a **5-stage pipeline** with **8 specialized agents**:
+---
+
+## 시스템 아키텍처
+
+### 멀티에이전트 워크플로우
+
+본 시스템은 **8개의 전문 에이전트**로 구성된 **5단계 파이프라인**을 따릅니다:
 
 ```
-Stage 1: Startup Discovery
+Stage 1: 스타트업 발굴
     ↓
-Stage 2: Parallel Analysis (4 agents)
-    ├─ Technology Summary Agent
-    ├─ Marketability Evaluation Agent
-    ├─ Impact Evaluation Agent
-    └─ Data Moat Analysis Agent
+Stage 2: 병렬 분석 (4개 에이전트)
+    ├─ 기술 요약 에이전트
+    ├─ 시장성 평가 에이전트
+    ├─ 임팩트 평가 에이전트
+    └─ 데이터 해자 분석 에이전트
     ↓
-Stage 3: Competitor Comparison
+Stage 3: 경쟁사 비교
     ↓
-Stage 4: Investment Decision
+Stage 4: 투자 결정
     ↓
-Stage 5: Report Generation
+Stage 5: 보고서 생성
 ```
 
-### Agent Responsibilities
+### 에이전트별 역할
 
 #### **1. StartupDiscoveryAgent** (Stage 1)
-- Identifies and profiles startup candidates
-- Retrieves basic company metadata
-- Gathers relevant documents for downstream analysis
-- Normalizes company profiles
-- **Output**: `StartupProfile`
+- 스타트업 후보 식별 및 프로파일링
+- 기본 기업 메타데이터 수집
+- 하위 분석을 위한 관련 문서 수집
+- 기업 프로파일 정규화
+- **출력**: `StartupProfile`
 
-#### **2. TechnologySummaryAgent** (Stage 2, Parallel)
-- Summarizes core technology and innovation
-- Extracts patents, papers, technical keywords
-- Identifies defensibility and originality signals
-- **Output**: `TechnologyAnalysisResult` (Novelty, Defensibility)
+#### **2. TechnologySummaryAgent** (Stage 2, 병렬)
+- 핵심 기술 및 혁신성 요약
+- 특허, 논문, 기술 키워드 추출
+- 방어 가능성 및 독창성 신호 식별
+- **출력**: `TechnologyAnalysisResult` (신규성, 방어력)
 
-#### **3. MarketabilityEvaluationAgent** (Stage 2, Parallel)
-- Evaluates target market and customer pain points
-- Analyzes business model and adoption barriers
-- Assesses commercial feasibility and scalability
-- **Output**: `MarketabilityAnalysisResult` (Market Size, Growth, Viability)
+#### **3. MarketabilityEvaluationAgent** (Stage 2, 병렬)
+- 목표 시장 및 고객 페인포인트 평가
+- 비즈니스 모델 및 도입 장벽 분석
+- 상업적 타당성 및 확장성 평가
+- **출력**: `MarketabilityAnalysisResult` (시장 규모, 성장 가능성, 실현 가능성)
 
-#### **4. ImpactEvaluationAgent** (Stage 2, Parallel)
-- Evaluates environmental and agricultural impact
-- Extracts efficiency and yield improvement claims
-- Analyzes sustainability benefits
-- **Output**: `ImpactAnalysisResult` (Environmental, Agricultural benefits)
+#### **4. ImpactEvaluationAgent** (Stage 2, 병렬)
+- 환경 및 농업적 임팩트 평가
+- 효율성 및 수확량 향상 주장 추출
+- 지속가능성 혜택 분석
+- **출력**: `ImpactAnalysisResult` (환경적, 농업적 혜택)
 
-#### **5. DataMoatAnalysisAgent** (Stage 2, Parallel)
-- Analyzes proprietary datasets and data assets
-- Evaluates data flywheel effects and network potential
-- Assesses data defensibility and competitive advantage
-- **Output**: `DataMoatAnalysisResult` (Moat Strength)
+#### **5. DataMoatAnalysisAgent** (Stage 2, 병렬)
+- 독점 데이터셋 및 데이터 자산 분석
+- 데이터 플라이휠 효과 및 네트워크 잠재력 평가
+- 데이터 방어력 및 경쟁 우위 평가
+- **출력**: `DataMoatAnalysisResult` (해자 강도)
 
 #### **6. CompetitorComparisonAgent** (Stage 3)
-- Identifies comparable competitors
-- Compares technology differentiation
-- Analyzes relative market position and barriers
-- **Output**: `CompetitorAnalysisResult` (Competitive Advantage)
+- 비교 경쟁사 식별
+- 기술 차별화 비교
+- 상대적 시장 포지션 및 진입 장벽 분석
+- **출력**: `CompetitorAnalysisResult` (경쟁 우위)
 
 #### **7. InvestmentDecisionAgent** (Stage 4)
-- Aggregates evidence from all previous agents
-- Calculates overall assessment score
-- Produces investment recommendation with confidence
-- **Output**: `InvestmentDecision` (INVEST / HOLD_FOR_REVIEW / PASS)
+- 이전 모든 에이전트의 증거 집계
+- 종합 평가 점수 산출
+- 신뢰도 포함 투자 권고안 도출
+- **출력**: `InvestmentDecision` (INVEST / HOLD_FOR_REVIEW / PASS)
 
 #### **8. ReportGenerationAgent** (Stage 5)
-- Creates comprehensive evaluation report
-- Summarizes all agent findings
-- Documents evidence and decision rationale
-- **Output**: `FullEvaluationResult` + Formatted report
+- 종합 평가 보고서 작성
+- 모든 에이전트 분석 결과 요약
+- 증거 및 결정 근거 문서화
+- **출력**: `FullEvaluationResult` + 형식화된 보고서
 
 ---
 
-## Evaluation Framework
+## 평가 프레임워크
 
-### Scoring Criteria
+### 평가 기준
 
-The system evaluates startups across **5 weighted categories**:
+본 시스템은 **5개 가중치 카테고리**로 스타트업을 평가합니다:
 
-| Category | Weight | Sub-Criteria |
-|----------|--------|--------------|
-| **Technology** | 25% | Novelty, Defensibility, Feasibility |
-| **Market** | 25% | Market Size, Growth Potential, Commercial Viability |
-| **Impact** | 20% | Environmental Benefits, Agricultural Benefits, Measurability |
-| **Data Moat** | 15% | Data Assets, Network Effects, Defensibility |
-| **Competitive Position** | 15% | Differentiation, Barriers to Entry, Market Position |
+| 카테고리 | 가중치 | 세부 기준 |
+|----------|--------|-----------|
+| **기술력** | 25% | 신규성, 방어력, 실현 가능성 |
+| **시장성** | 25% | 시장 규모, 성장 잠재력, 상업적 실현 가능성 |
+| **임팩트** | 20% | 환경적 혜택, 농업적 혜택, 측정 가능성 |
+| **데이터 해자** | 15% | 데이터 자산, 네트워크 효과, 방어력 |
+| **경쟁 포지션** | 15% | 차별화, 진입 장벽, 시장 포지션 |
 
-### Investment Thresholds
+### 투자 결정 임계값
 
-| Score | Recommendation | Decision |
-|-------|---|---|
-| ≥ 0.75 | **INVEST (Strong)** | Clear investment opportunity with strong signals |
-| 0.60 - 0.74 | **INVEST (Conditional)** | Reasonable opportunity with good evidence |
-| 0.40 - 0.59 | **HOLD_FOR_REVIEW** | Promising but needs further evaluation |
-| < 0.40 | **PASS** | Not recommended for investment at this time |
+| 점수 | 권고 | 결정 |
+|------|------|------|
+| ≥ 0.75 | **INVEST (강력)** | 강한 신호를 가진 명확한 투자 기회 |
+| 0.60 - 0.74 | **INVEST (조건부)** | 충분한 증거를 가진 합리적인 기회 |
+| 0.40 - 0.59 | **HOLD_FOR_REVIEW** | 유망하나 추가 평가 필요 |
+| < 0.40 | **PASS** | 현 시점 투자 비권고 |
 
 ---
 
-## Project Structure
+## 프로젝트 구조
 
 ```
 AgTech_investment_agent/
 ├── app/
 │   ├── __init__.py
-│   ├── config.py              # Configuration management
-│   ├── orchestrator.py        # Multi-agent workflow orchestrator
-│   └── main.py                # Main application entry point
+│   ├── config.py              # 설정 관리
+│   ├── orchestrator.py        # 멀티에이전트 워크플로우 오케스트레이터
+│   └── main.py                # 메인 애플리케이션 진입점
 │
 ├── agents/
 │   ├── __init__.py
-│   ├── base_agent.py          # Abstract base agent class
+│   ├── base_agent.py          # 추상 베이스 에이전트 클래스
 │   ├── step0_startup_discovery_agent.py
 │   ├── step1_technology_summary_agent.py
 │   ├── step1_marketability_evaluation_agent.py
@@ -147,26 +147,26 @@ AgTech_investment_agent/
 │
 ├── models/
 │   ├── __init__.py
-│   ├── startup_profile.py     # Startup data model
-│   ├── retrieved_document.py  # Retrieved document model
-│   ├── evidence_item.py       # Evidence item model
-│   ├── analysis_results.py    # Analysis result models
-│   ├── competitor_result.py   # Competitor analysis model
-│   ├── decision_result.py     # Investment decision model
-│   └── full_evaluation_result.py  # Complete evaluation report
+│   ├── startup_profile.py     # 스타트업 데이터 모델
+│   ├── retrieved_document.py  # 검색 문서 모델
+│   ├── evidence_item.py       # 증거 항목 모델
+│   ├── analysis_results.py    # 분석 결과 모델
+│   ├── competitor_result.py   # 경쟁사 분석 모델
+│   ├── decision_result.py     # 투자 결정 모델
+│   └── full_evaluation_result.py  # 완전한 평가 보고서
 │
 ├── rag/
 │   ├── __init__.py
-│   ├── chunking.py            # Document chunking strategies
-│   ├── vectorstore.py         # Vector storage and search
-│   ├── retriever.py           # RAG-based retrieval
-│   └── loaders.py             # Document loading utilities
+│   ├── chunking.py            # 문서 청킹 전략
+│   ├── vectorstore.py         # 벡터 저장소 및 검색
+│   ├── retriever.py           # RAG 기반 검색
+│   └── loaders.py             # 문서 로딩 유틸리티
 │
 ├── evaluation/
 │   ├── __init__.py
-│   ├── criteria.py            # Evaluation criteria and weights
-│   ├── scoring_rules.py       # Scoring rules and aggregation
-│   └── thresholds.py          # Decision thresholds
+│   ├── criteria.py            # 평가 기준 및 가중치
+│   ├── scoring_rules.py       # 점수 규칙 및 집계
+│   └── thresholds.py          # 결정 임계값
 │
 ├── tests/
 │   ├── __init__.py
@@ -181,129 +181,129 @@ AgTech_investment_agent/
 │   └── test_orchestrator.py
 │
 ├── data/
-│   ├── raw/                   # Raw input data
-│   ├── processed/             # Processed data
-│   └── examples/              # Example data files
+│   ├── raw/                   # 원본 입력 데이터
+│   ├── processed/             # 처리된 데이터
+│   └── examples/              # 예시 데이터 파일
 │
-├── outputs/                   # Generated evaluation reports
+├── outputs/                   # 생성된 평가 보고서
 │
-├── .github/workflows/         # CI/CD configuration
-├── requirements.txt           # Python dependencies
-├── .env.example              # Environment variables template
-├── setup.py                  # Package setup configuration
-├── pytest.ini                # Pytest configuration
-├── run_evaluation.py         # Quick start script
-└── README.md                 # This file
+├── .github/workflows/         # CI/CD 설정
+├── requirements.txt           # Python 의존성
+├── .env.example               # 환경 변수 템플릿
+├── setup.py                   # 패키지 설정
+├── pytest.ini                 # Pytest 설정
+├── run_evaluation.py          # 빠른 시작 스크립트
+└── README.md                  # 이 파일
 ```
 
 ---
 
-## Installation
+## 설치
 
-### Prerequisites
+### 사전 요구사항
 
-- Python 3.10 or higher
-- pip package manager
+- Python 3.10 이상
+- pip 패키지 관리자
 
-### Step 1: Clone the Repository
+### Step 1: 저장소 클론
 
 ```bash
 git clone <repository-url>
 cd AgTech_investment_agent
 ```
 
-### Step 2: Create Virtual Environment
+### Step 2: 가상 환경 생성
 
 ```bash
-# Create virtual environment
+# 가상 환경 생성
 python3.10 -m venv venv
 
-# Activate virtual environment
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# 가상 환경 활성화
+source venv/bin/activate  # Windows: venv\Scripts\activate
 ```
 
-### Step 3: Install Dependencies
+### Step 3: 의존성 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure Environment
+### Step 4: 환경 설정
 
 ```bash
-# Copy example environment file
+# 예시 환경 파일 복사
 cp .env.example .env
 
-# Edit .env with your configuration
-# (Default values should work for most use cases)
+# .env 파일 편집
+# (대부분의 경우 기본값으로 동작합니다)
 ```
 
 ---
 
-## Quick Start
+## 빠른 시작
 
-### Option 1: Command Line
+### 방법 1: 커맨드 라인
 
 ```bash
-# Navigate to project
+# 프로젝트 디렉토리로 이동
 cd AgTech_investment_agent
 
-# Activate virtual environment (if not already active)
+# 가상 환경 활성화 (비활성화 상태인 경우)
 source venv/bin/activate
 
-# Run evaluation
+# 평가 실행
 python run_evaluation.py
 
-# Check outputs
+# 결과 확인
 ls -la outputs/
 ```
 
-### Option 2: Python Script
+### 방법 2: Python 스크립트
 
 ```python
 from app import AgentOrchestrator
 
-# Create orchestrator
+# 오케스트레이터 생성
 orchestrator = AgentOrchestrator()
 
-# Evaluate a single startup
+# 단일 스타트업 평가
 result = orchestrator.evaluate_startup("StartupName", {
     "founded_year": 2020,
     "headquarters": "San Francisco, CA",
     "stage": "Series A"
 })
 
-# Access results
-print(f"Recommendation: {result.investment_decision.recommendation}")
-print(f"Score: {result.investment_decision.overall_assessment_score:.2%}")
-print(f"Report:\n{result.report_content}")
+# 결과 확인
+print(f"권고: {result.investment_decision.recommendation}")
+print(f"점수: {result.investment_decision.overall_assessment_score:.2%}")
+print(f"보고서:\n{result.report_content}")
 ```
 
-### The 8 Agents Summary
+### 8개 에이전트 요약
 
-| Stage | Agent Name | Input | Output |
-|-------|-----------|-------|--------|
-| 0 | StartupDiscoveryAgent | Startup name, info dict | StartupProfile |
+| 단계 | 에이전트 이름 | 입력 | 출력 |
+|------|--------------|------|------|
+| 0 | StartupDiscoveryAgent | 스타트업 이름, 정보 딕셔너리 | StartupProfile |
 | 1 | TechnologySummaryAgent | StartupProfile | TechnologyAnalysisResult |
 | 1 | MarketabilityEvaluationAgent | StartupProfile | MarketabilityAnalysisResult |
 | 1 | ImpactEvaluationAgent | StartupProfile | ImpactAnalysisResult |
 | 1 | DataMoatAnalysisAgent | StartupProfile | DataMoatAnalysisResult |
-| 2 | CompetitorComparisonAgent | All Stage 1 results | CompetitorAnalysisResult |
-| 3 | InvestmentDecisionAgent | All previous results | InvestmentDecision |
-| 4 | ReportGenerationAgent | All results | FullEvaluationResult |
+| 2 | CompetitorComparisonAgent | Stage 1 전체 결과 | CompetitorAnalysisResult |
+| 3 | InvestmentDecisionAgent | 이전 모든 결과 | InvestmentDecision |
+| 4 | ReportGenerationAgent | 전체 결과 | FullEvaluationResult |
 
 ---
 
-## Usage Examples
+## 사용 예시
 
-### Single Startup Evaluation
+### 단일 스타트업 평가
 
 ```python
 from app import AgentOrchestrator
 
 orchestrator = AgentOrchestrator()
 
-# Define startup information
+# 스타트업 정보 정의
 startup_info = {
     "founded_year": 2020,
     "headquarters": "San Francisco, CA",
@@ -312,17 +312,17 @@ startup_info = {
     "website": "https://example.com"
 }
 
-# Evaluate startup
+# 스타트업 평가
 result = orchestrator.evaluate_startup("GreenTech Innovations", startup_info)
 
-# Access different analysis results
-print(f"Technology Analysis: {result.technology_analysis.novelty_score:.2f}")
-print(f"Market Analysis: {result.marketability_analysis.market_size_score:.2f}")
-print(f"Impact Analysis: {result.impact_analysis.environmental_score:.2f}")
-print(f"Investment Decision: {result.investment_decision.recommendation}")
+# 다양한 분석 결과 확인
+print(f"기술 분석: {result.technology_analysis.novelty_score:.2f}")
+print(f"시장 분석: {result.marketability_analysis.market_size_score:.2f}")
+print(f"임팩트 분석: {result.impact_analysis.environmental_score:.2f}")
+print(f"투자 결정: {result.investment_decision.recommendation}")
 ```
 
-### Batch Evaluation (Multiple Startups)
+### 일괄 평가 (다수 스타트업)
 
 ```python
 from app import AgentOrchestrator
@@ -332,30 +332,30 @@ orchestrator = AgentOrchestrator()
 startup_names = ["Startup1", "Startup2", "Startup3"]
 results = orchestrator.evaluate_multiple_startups(startup_names)
 
-# Process results
+# 결과 처리
 for result in results:
     print(f"{result.startup.name}: {result.investment_decision.recommendation}")
-    print(f"  Score: {result.investment_decision.overall_assessment_score:.2%}")
+    print(f"  점수: {result.investment_decision.overall_assessment_score:.2%}")
 ```
 
-### With Custom Documents (RAG Integration)
+### 커스텀 문서 사용 (RAG 연동)
 
 ```python
 from app import AgentOrchestrator
 from rag import Retriever, DocumentLoader
 
-# Load documents
+# 문서 로드
 retriever = Retriever()
 loader = DocumentLoader()
 
-# Load from directory
+# 디렉토리에서 로드
 docs = loader.load_directory("./startup_documents", "*.txt")
 retriever.add_documents(docs)
 
-# Create orchestrator with retriever
+# 리트리버와 함께 오케스트레이터 생성
 orchestrator = AgentOrchestrator(retriever)
 
-# Evaluate with document context
+# 문서 컨텍스트를 활용한 평가
 startup_info = {
     "founded_year": 2020,
     "headquarters": "San Francisco, CA",
@@ -364,96 +364,96 @@ startup_info = {
 result = orchestrator.evaluate_startup("MyStartup", startup_info)
 ```
 
-### Access All Analysis Results
+### 전체 분석 결과 접근
 
 ```python
-# Unpack the FullEvaluationResult
+# FullEvaluationResult 언패킹
 result.startup                    # StartupProfile
-result.technology_analysis       # TechnologyAnalysisResult
-result.marketability_analysis    # MarketabilityAnalysisResult
-result.impact_analysis           # ImpactAnalysisResult
-result.data_moat_analysis        # DataMoatAnalysisResult
-result.competitor_analysis       # CompetitorAnalysisResult
-result.investment_decision       # InvestmentDecision
-result.report_content            # Full text report
+result.technology_analysis        # TechnologyAnalysisResult
+result.marketability_analysis     # MarketabilityAnalysisResult
+result.impact_analysis            # ImpactAnalysisResult
+result.data_moat_analysis         # DataMoatAnalysisResult
+result.competitor_analysis        # CompetitorAnalysisResult
+result.investment_decision        # InvestmentDecision
+result.report_content             # 전체 텍스트 보고서
 
-# Access specific metrics
-print(f"Confidence: {result.investment_decision.confidence_score:.2%}")
-print(f"Strengths: {result.investment_decision.key_strengths}")
-print(f"Risks: {result.investment_decision.key_risks}")
-print(f"Missing Info: {result.investment_decision.missing_critical_information}")
+# 특정 지표 접근
+print(f"신뢰도: {result.investment_decision.confidence_score:.2%}")
+print(f"강점: {result.investment_decision.key_strengths}")
+print(f"위험: {result.investment_decision.key_risks}")
+print(f"누락 정보: {result.investment_decision.missing_critical_information}")
 ```
 
 ---
 
-## Testing
+## 테스트
 
-### Run All Tests
+### 전체 테스트 실행
 
 ```bash
-# Basic test run
+# 기본 테스트 실행
 pytest tests/ -v
 
-# With coverage report
+# 커버리지 보고서 포함
 pytest tests/ --cov=. --cov-report=html
 
-# Run specific test file
+# 특정 테스트 파일 실행
 pytest tests/test_orchestrator.py -v
 
-# Run tests by marker
+# 마커별 테스트 실행
 pytest -m "unit"
 pytest -m "integration"
 ```
 
-### Test Results
+### 테스트 결과
 
-The project includes 28 comprehensive tests covering:
-- All 8 agents (3 tests each)
-- Orchestrator workflow (4 tests)
-- Edge cases and error handling
-- Data model validation
-- Integration between stages
+본 프로젝트는 다음을 커버하는 28개의 종합 테스트를 포함합니다:
+- 8개 에이전트 각 3개 테스트
+- 오케스트레이터 워크플로우 4개 테스트
+- 엣지 케이스 및 에러 처리
+- 데이터 모델 검증
+- 단계 간 통합
 
-**Current Status**: ✅ All 28 tests passing
+**현재 상태**: ✅ 28개 테스트 전체 통과
 
 ---
 
-## Configuration
+## 설정
 
-### Environment Variables (.env)
+### 환경 변수 (.env)
 
-Create a `.env` file based on `.env.example`:
+`.env.example`을 기반으로 `.env` 파일을 생성하세요:
 
 ```bash
-# LLM Configuration
+# LLM 설정
 LLM_MODEL=claude-3-haiku
 OPENAI_API_KEY=your_openai_key_here
 
-# Embedding Configuration
+# 임베딩 설정
 EMBEDDING_MODEL=BAAI/bge-m3
 HF_API_KEY=your_huggingface_key_here
 
-# RAG Configuration
+# RAG 설정
 CHUNK_SIZE=1024
 TOP_K_RETRIEVAL=5
 VECTOR_STORE_TYPE=chroma
 
-# Agent Configuration
+# 에이전트 설정
 MAX_PARALLEL_WORKERS=4
 LOG_LEVEL=INFO
 
-# Evaluation Thresholds
+# 평가 임계값
 STRONG_INVEST_THRESHOLD=0.75
 INVEST_THRESHOLD=0.60
 HOLD_THRESHOLD=0.40
 ```
 
-### Configuration in Code
+### 코드에서 설정 접근
 
 ```python
 from app import config
 
-# Access configuration
+# 설정 접근
 print(config.LLM_MODEL)
 print(config.EMBEDDING_MODEL)
 print(config.MAX_PARALLEL_WORKERS)
@@ -461,31 +461,31 @@ print(config.MAX_PARALLEL_WORKERS)
 
 ---
 
-## Key Classes
+## 주요 클래스
 
 ### AgentOrchestrator
 
-Main orchestrator that manages the entire pipeline:
+전체 파이프라인을 관리하는 메인 오케스트레이터:
 
 ```python
 from app import AgentOrchestrator
 
-# Create orchestrator
+# 오케스트레이터 생성
 orchestrator = AgentOrchestrator(retriever=None, max_workers=4)
 
-# Single startup evaluation
+# 단일 스타트업 평가
 result = orchestrator.evaluate_startup(name: str, startup_info: dict)
 
-# Multiple startup evaluation
+# 다수 스타트업 평가
 results = orchestrator.evaluate_multiple_startups(names: list[str])
 
-# Get workflow summary
+# 워크플로우 요약 조회
 summary = orchestrator.get_workflow_summary()
 ```
 
 ### FullEvaluationResult
 
-Complete evaluation result containing all agent outputs:
+모든 에이전트 출력을 포함하는 완전한 평가 결과:
 
 ```python
 @dataclass
@@ -500,31 +500,31 @@ class FullEvaluationResult:
     report_content: str
 ```
 
-### Retriever (RAG System)
+### Retriever (RAG 시스템)
 
-Document retrieval for evidence-based analysis:
+증거 기반 분석을 위한 문서 검색:
 
 ```python
 from rag import Retriever, DocumentLoader
 
-# Create retriever
+# 리트리버 생성
 retriever = Retriever()
 
-# Load documents
+# 문서 로드
 loader = DocumentLoader()
 docs = loader.load_text_file("file.txt")
 docs = loader.load_directory("./documents", "*.md")
 
-# Add documents to retriever
+# 리트리버에 문서 추가
 retriever.add_documents(docs)
 
-# Retrieve relevant documents
-results = retriever.retrieve("query about technology", top_k=5)
+# 관련 문서 검색
+results = retriever.retrieve("기술에 관한 쿼리", top_k=5)
 ```
 
 ### BaseAgent
 
-Abstract base class for all agents:
+모든 에이전트의 추상 베이스 클래스:
 
 ```python
 from agents import BaseAgent
@@ -533,13 +533,13 @@ class CustomAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="CustomAgent",
-            description="Description of agent"
+            description="에이전트 설명"
         )
-    
+
     def execute(self, *args, **kwargs):
         self.start_execution()
         try:
-            # Agent logic
+            # 에이전트 로직
             result = self._process_data()
             return result
         finally:
@@ -548,95 +548,95 @@ class CustomAgent(BaseAgent):
 
 ---
 
-## Common Tasks
+## 일반 작업
 
-### Add a New Evaluation Criterion
+### 새 평가 기준 추가
 
-1. **Update evaluation criteria** in `evaluation/criteria.py`
-   - Define the new criterion and its weight
-   - Add to appropriate category
+1. `evaluation/criteria.py`에서 **평가 기준 업데이트**
+   - 새 기준 및 가중치 정의
+   - 적절한 카테고리에 추가
 
-2. **Update scoring rules** in `evaluation/scoring_rules.py`
-   - Implement scoring logic for the new criterion
+2. `evaluation/scoring_rules.py`에서 **점수 규칙 업데이트**
+   - 새 기준의 점수 로직 구현
 
-3. **Update thresholds** in `evaluation/thresholds.py`
-   - Adjust decision thresholds if necessary
+3. `evaluation/thresholds.py`에서 **임계값 업데이트**
+   - 필요시 결정 임계값 조정
 
-4. **Update agent files**
-   - Integrate new criterion into relevant agents
+4. **에이전트 파일 업데이트**
+   - 관련 에이전트에 새 기준 통합
 
-5. **Add tests** in `tests/`
-   - Create tests for new functionality
+5. `tests/`에 **테스트 추가**
+   - 새 기능에 대한 테스트 작성
 
-### Create a Custom Agent
+### 커스텀 에이전트 생성
 
-1. **Create agent file** in `agents/` directory:
+1. `agents/` 디렉토리에 **에이전트 파일 생성**:
    ```python
    from agents import BaseAgent
    from models import StartupProfile
-   
+
    class CustomAgent(BaseAgent):
        def __init__(self):
            super().__init__(
                name="CustomAgent",
-               description="Your description"
+               description="설명"
            )
-       
+
        def execute(self, startup: StartupProfile):
            self.start_execution()
            try:
-               # Implementation
+               # 구현
                return result
            finally:
                self.end_execution()
    ```
 
-2. **Add to orchestrator** in `app/orchestrator.py`
-   - Integrate into workflow
+2. `app/orchestrator.py`에서 **오케스트레이터에 추가**
+   - 워크플로우에 통합
 
-3. **Create test file** in `tests/`
-   - Test initialization and execution
+3. `tests/`에 **테스트 파일 생성**
+   - 초기화 및 실행 테스트
 
-### Load Your Documents
+### 문서 로드
 
 ```python
 from rag import DocumentLoader, Retriever
 
-# Load single file
+# 단일 파일 로드
 doc = DocumentLoader.load_text_file("path/to/file.txt")
 
-# Load directory
+# 디렉토리 로드
 docs = DocumentLoader.load_directory("./documents", "*.md")
 
-# Add to retriever
+# 리트리버에 추가
 retriever = Retriever()
 retriever.add_documents(docs)
 
-# Retrieve relevant information
+# 관련 정보 검색
 results = retriever.retrieve(
-    "your query here",
+    "쿼리 입력",
     top_k=5
 )
 ```
 
 ---
 
-## Debugging & Troubleshooting
+## 디버깅 및 문제 해결
 
-### Enable Detailed Logging
+### 상세 로깅 활성화
 
 ```python
 import logging
 
-# Set up logging
+# 로깅 설정
 logging.basicConfig(level=logging.DEBUG)
 
-# Now run your code
+# 코드 실행
 from app import AgentOrchestrator
 orchestrator = AgentOrchestrator()
 ```
 
-### Check Agent Execution Details
+### 에이전트 실행 상세 확인
 
 ```python
 from agents import TechnologySummaryAgent
@@ -645,119 +645,119 @@ from models import StartupProfile
 agent = TechnologySummaryAgent()
 startup = StartupProfile(name="Test", founded_year=2020)
 
-# Run with timing
+# 타이밍 포함 실행
 agent.start_execution()
 result = agent.execute(startup)
 agent.end_execution()
 
-# Get execution duration
+# 실행 시간 조회
 duration = agent.get_execution_duration()
-print(f"Execution time: {duration:.2f} seconds")
+print(f"실행 시간: {duration:.2f}초")
 ```
 
-### Common Issues and Solutions
+### 일반적인 문제 및 해결책
 
-#### Import Errors
+#### 임포트 오류
 ```
 ImportError: cannot import name 'X'
 ```
-**Solutions**:
-- Ensure `.env` file is properly configured
-- Check Python path includes project root
-- Verify all `__init__.py` files exist in each package
-- Confirm Python version is 3.10+
+**해결책**:
+- `.env` 파일이 올바르게 설정되었는지 확인
+- Python 경로에 프로젝트 루트가 포함되어 있는지 확인
+- 각 패키지에 `__init__.py` 파일이 존재하는지 확인
+- Python 버전이 3.10 이상인지 확인
 
-#### Tests Failing
+#### 테스트 실패
 ```
 pytest: error
 ```
-**Solutions**:
-- Run `pytest -v` for detailed error messages
-- Ensure all dependencies are installed: `pip install -r requirements.txt`
-- Verify Python version: `python --version`
-- Check that all required `.env` variables are set
+**해결책**:
+- `pytest -v`로 상세 에러 메시지 확인
+- 모든 의존성 설치 확인: `pip install -r requirements.txt`
+- Python 버전 확인: `python --version`
+- 필요한 `.env` 변수가 모두 설정되었는지 확인
 
-#### Missing Output Files
+#### 출력 파일 누락
 ```
 FileNotFoundError: outputs directory
 ```
-**Solutions**:
-- Create `outputs/` directory: `mkdir outputs/`
-- Verify write permissions: `ls -la | grep outputs`
-- Check `LOG_FILE` configuration in `.env`
+**해결책**:
+- `outputs/` 디렉토리 생성: `mkdir outputs/`
+- 쓰기 권한 확인: `ls -la | grep outputs`
+- `.env`의 `LOG_FILE` 설정 확인
 
-#### Empty Evaluation Results
-**Solutions**:
-- Verify documents are loaded: `retriever.add_documents(docs)`
-- Check startup information is complete
-- Review agent logs for warnings
-- Ensure RAG retriever has documents if enabled
+#### 빈 평가 결과
+**해결책**:
+- 문서 로드 확인: `retriever.add_documents(docs)`
+- 스타트업 정보가 완전한지 확인
+- 경고를 위한 에이전트 로그 검토
+- RAG 리트리버에 문서가 있는지 확인
 
-### Performance Optimization
+### 성능 최적화
 
-**Single Startup Evaluation Time**: ~5-10 seconds
-- Stage 1 (Discovery): ~2 seconds
-- Stage 2 (Parallel Analysis): ~4 seconds (50% faster than sequential)
-- Stage 3-5 (Decision & Reporting): ~2 seconds
+**단일 스타트업 평가 시간**: ~5-10초
+- Stage 1 (발굴): ~2초
+- Stage 2 (병렬 분석): ~4초 (순차 대비 50% 빠름)
+- Stage 3-5 (결정 및 보고서): ~2초
 
-**Batch Performance**:
-- 10 startups: ~1-2 minutes
-- 100 startups: ~10-20 minutes
-- Database storage recommended for scaling
-
----
-
-## Design Principles
-
-1. **Multi-agent pipeline**: Specialized agents with clear, isolated responsibilities
-2. **Retrieval first**: Evidence extraction before scoring (RAG-based)
-3. **Transparency**: All decisions are explainable with supporting evidence
-4. **Modularity**: Each agent is independently testable and extensible
-5. **Parallel execution**: Stage 2 agents run concurrently (4-worker ThreadPoolExecutor)
-6. **Evidence-based**: All recommendations backed by specific, traceable evidence
-7. **Normalized scoring**: All scores normalized to consistent 0.0-1.0 scale
-8. **Weighted aggregation**: Clear, weighted combination of criteria
+**일괄 처리 성능**:
+- 10개 스타트업: ~1-2분
+- 100개 스타트업: ~10-20분
+- 대규모 처리 시 데이터베이스 저장 권장
 
 ---
 
-## Key Features
+## 설계 원칙
 
-✅ **Multi-agent architecture** with 8 specialized agents with clear responsibilities  
-✅ **Parallel execution** - Stage 2 runs 4 concurrent agents for 50% efficiency gain  
-✅ **RAG integration** - Evidence extraction and document-based analysis  
-✅ **Structured evaluation** with 5 explicit weighted criteria categories  
-✅ **Evidence tracking** - All decisions backed by specific evidence items  
-✅ **Comprehensive reporting** - Actionable insights and decision rationale  
-✅ **Extensible design** - Custom agents and criteria can be easily added  
-✅ **Comprehensive testing** - 28 tests with high coverage via pytest  
-✅ **Type safety** - Full Python type hints and dataclass models  
-✅ **Configuration management** - Flexible `.env`-based configuration  
+1. **멀티에이전트 파이프라인**: 명확하고 격리된 책임을 가진 전문 에이전트
+2. **검색 우선**: 점수 산출 전 증거 추출 (RAG 기반)
+3. **투명성**: 모든 결정은 지원 증거와 함께 설명 가능
+4. **모듈성**: 각 에이전트는 독립적으로 테스트 및 확장 가능
+5. **병렬 실행**: Stage 2 에이전트는 동시 실행 (4워커 ThreadPoolExecutor)
+6. **증거 기반**: 모든 권고는 구체적이고 추적 가능한 증거로 뒷받침
+7. **정규화 점수**: 모든 점수는 일관된 0.0-1.0 척도로 정규화
+8. **가중 집계**: 명확하고 가중치가 적용된 기준 조합
 
 ---
 
-## Future Enhancements
+## 주요 기능
 
-- [ ] Integration with real LLM APIs (OpenAI Claude, GPT-4)
-- [ ] Database persistence for evaluation results (PostgreSQL, MongoDB)
-- [ ] Web dashboard for report visualization (React/FastAPI)
-- [ ] Real document ingestion (PDF, Word, web scraping)
-- [ ] Advanced embedding models (Chroma, Pinecone vector DB)
-- [ ] API endpoint for remote evaluation (REST/GraphQL)
-- [ ] Machine learning for criteria weighting optimization
-- [ ] Historical performance tracking and backtesting
-- [ ] Comparative analysis dashboard across multiple startups
-- [ ] Advanced competitor intelligence integration
-- [ ] Patent analysis integration
-- [ ] Financial data integration (Crunchbase, PitchBook)
-- [ ] Social sentiment analysis
-- [ ] Market sizing enrichment
+✅ **멀티에이전트 아키텍처** — 명확한 책임을 가진 8개의 전문 에이전트
+✅ **병렬 실행** — Stage 2에서 4개 에이전트 동시 실행으로 50% 효율 향상
+✅ **RAG 연동** — 증거 추출 및 문서 기반 분석
+✅ **구조화된 평가** — 5개 명시적 가중치 카테고리
+✅ **증거 추적** — 모든 결정은 구체적인 증거 항목으로 뒷받침
+✅ **종합 보고서** — 실행 가능한 인사이트 및 결정 근거
+✅ **확장 가능한 설계** — 커스텀 에이전트 및 기준 손쉽게 추가 가능
+✅ **종합 테스트** — pytest로 높은 커버리지의 28개 테스트
+✅ **타입 안전성** — 완전한 Python 타입 힌트 및 데이터클래스 모델
+✅ **설정 관리** — 유연한 `.env` 기반 설정
 
 ---
 
-## Key Concepts
+## 향후 개선 사항
 
-### Evidence Item
-Every finding is backed by source document with confidence score:
+- [ ] 실제 LLM API 연동 (OpenAI Claude, GPT-4)
+- [ ] 평가 결과 데이터베이스 영속성 (PostgreSQL, MongoDB)
+- [ ] 보고서 시각화 웹 대시보드 (React/FastAPI)
+- [ ] 실제 문서 수집 (PDF, Word, 웹 스크래핑)
+- [ ] 고급 임베딩 모델 (Chroma, Pinecone 벡터 DB)
+- [ ] 원격 평가를 위한 API 엔드포인트 (REST/GraphQL)
+- [ ] 기준 가중치 최적화를 위한 머신러닝
+- [ ] 이력 성과 추적 및 백테스팅
+- [ ] 다수 스타트업 비교 분석 대시보드
+- [ ] 고급 경쟁사 인텔리전스 연동
+- [ ] 특허 분석 연동
+- [ ] 재무 데이터 연동 (Crunchbase, PitchBook)
+- [ ] 소셜 감성 분석
+- [ ] 시장 규모 산정 강화
+
+---
+
+## 핵심 개념
+
+### 증거 항목
+모든 발견 사항은 신뢰도 점수와 함께 출처 문서로 뒷받침됩니다:
 ```python
 @dataclass
 class EvidenceItem:
@@ -767,46 +767,46 @@ class EvidenceItem:
     supporting_quotes: list[str]
 ```
 
-### Score Range
-All scores are normalized to **0.0 - 1.0** scale for consistency.
+### 점수 범위
+모든 점수는 일관성을 위해 **0.0 - 1.0** 척도로 정규화됩니다.
 
-### Parallel Execution
-Stage 2 analysis agents run concurrently using `ThreadPoolExecutor` for efficiency.
+### 병렬 실행
+Stage 2 분석 에이전트는 효율성을 위해 `ThreadPoolExecutor`를 사용하여 동시에 실행됩니다.
 
-### Weighted Aggregation
-Final investment score combines 5 categories with predefined weights:
-- Technology: 25%
-- Market: 25%
-- Impact: 20%
-- Data Moat: 15%
-- Competitive: 15%
-
----
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/improvement`)
-3. Add tests for new functionality
-4. Ensure all tests pass (`pytest tests/ -v`)
-5. Submit a pull request
-
-## Support
-
-For issues, questions, or suggestions:
-- Open an issue on the repository
-- Check `IMPLEMENTATION_SUMMARY.md` for detailed technical overview
-- Review test files for usage examples
+### 가중 집계
+최종 투자 점수는 사전 정의된 가중치로 5개 카테고리를 결합합니다:
+- 기술력: 25%
+- 시장성: 25%
+- 임팩트: 20%
+- 데이터 해자: 15%
+- 경쟁력: 15%
 
 ---
 
-**Last Updated**: March 2026  
-**Version**: 1.0.0  
-**Python Version**: 3.10+  
-**Status**: Production Ready ✅
+## 라이선스
+
+MIT 라이선스 — 자세한 내용은 LICENSE 파일 참조
+
+## 기여
+
+기여를 환영합니다! 다음 절차를 따라주세요:
+
+1. 저장소 포크
+2. 기능 브랜치 생성 (`git checkout -b feature/improvement`)
+3. 새 기능에 대한 테스트 추가
+4. 모든 테스트 통과 확인 (`pytest tests/ -v`)
+5. 풀 리퀘스트 제출
+
+## 지원
+
+문제, 질문 또는 제안 사항:
+- 저장소에 이슈 등록
+- 상세 기술 개요는 `IMPLEMENTATION_SUMMARY.md` 참조
+- 사용 예시는 테스트 파일 검토
+
+---
+
+**최종 업데이트**: 2026년 3월
+**버전**: 1.0.0
+**Python 버전**: 3.10+
+**상태**: 프로덕션 준비 완료 ✅
