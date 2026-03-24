@@ -10,7 +10,7 @@ from .analysis_results import (
     DataMoatAnalysisResult,
 )
 from .competitor_result import CompetitorAnalysisResult
-from .decision_result import InvestmentDecision
+from .decision_result import InvestmentDecision, InvestmentRecommendation
 from .full_evaluation_result import FullEvaluationResult
 
 __all__ = [
@@ -23,5 +23,6 @@ __all__ = [
     "DataMoatAnalysisResult",
     "CompetitorAnalysisResult",
     "InvestmentDecision",
+    "InvestmentRecommendation",
     "FullEvaluationResult",
 ]
