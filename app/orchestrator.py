@@ -3,8 +3,6 @@
 import logging
 from typing import Optional, Any
 
-from langgraph.types import Command
-
 from rag import Retriever
 from models import FullEvaluationResult, StartupProfile
 from app.graph import build_graph, EvaluationState
@@ -157,17 +155,6 @@ class AgentOrchestrator:
         }
 
         state = self.graph.invoke(initial_state, config)
-
-        # ── HITL 루프 ─────────────────────────────────────────────────
-        while state.get("__interrupt__"):
-            for iv in state["__interrupt__"]:
-                print(iv.value)
-
-            raw = input("입력 (approve / reanalyze): ").strip().lower()
-            feedback = "reanalyze" if raw == "reanalyze" else "approve"
-
-            state = self.graph.invoke(Command(resume=feedback), config)
-
         return state.get("final_results", [])
 
     def get_workflow_summary(self) -> dict:

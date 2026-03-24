@@ -46,7 +46,7 @@ class StartupDiscoveryAgent(BaseAgent):
             )
 
             # ── 2. LLM으로 기업명만 추출 ─────────────────────────────────
-            prompt = f"""아래 문서에서 AgTech 스타트업 회사 이름만 추출해서 JSON 배열로 반환하세요.
+            prompt = f"""아래 문서에서 AgTech 스타트업 회사 상위 4개 이름 추출해서 JSON 배열로 반환하세요.
 회사명 외에 국가, 도시, 설명 등은 포함하지 마세요.
 중복은 제거하세요.
 
@@ -65,11 +65,18 @@ class StartupDiscoveryAgent(BaseAgent):
 
             raw = json.loads(response.choices[0].message.content)
 
-            # JSON object로 반환될 경우 배열 값 추출
+            # JSON object 파싱
+            # case 1: {"companies": ["A", "B", ...]}  → 값이 리스트
+            # case 2: {"회사명1": "A", "회사명2": "B", ...} → 값이 모두 문자열
             if isinstance(raw, dict):
-                names = next(iter(raw.values()))
+                first_val = next(iter(raw.values()))
+                names = first_val if isinstance(first_val, list) else list(raw.values())
             else:
                 names = raw
+
+            # 혹시 쉼표 구분 문자열로 반환된 경우
+            if isinstance(names, str):
+                names = [n.strip() for n in names.split(",") if n.strip()]
 
             self.log_info(f"Discovered {len(names)} startups")
             return names

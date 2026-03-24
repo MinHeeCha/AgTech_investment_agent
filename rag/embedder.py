@@ -35,7 +35,7 @@ class BGEM3Embedder:
         self._device = device or self._auto_device()
 
         print(f"Loading {self.MODEL_NAME} on {self._device} ...")
-        self._model = SentenceTransformer(self.MODEL_NAME, device=self._device)
+        self._model = SentenceTransformer(self.MODEL_NAME, device=self._device, local_files_only=True)
         print("Model loaded.")
 
     @staticmethod
