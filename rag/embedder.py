@@ -34,8 +34,11 @@ class BGEM3Embedder:
         self.batch_size = batch_size
         self._device = device or self._auto_device()
 
+        import os
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")  # 로컬 캐시만 사용, 네트워크 요청 차단
+
         print(f"Loading {self.MODEL_NAME} on {self._device} ...")
-        self._model = SentenceTransformer(self.MODEL_NAME, device=self._device, local_files_only=True)
+        self._model = SentenceTransformer(self.MODEL_NAME, device=self._device)
         print("Model loaded.")
 
     @staticmethod

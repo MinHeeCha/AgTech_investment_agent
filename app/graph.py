@@ -59,7 +59,62 @@ def build_graph(retriever: Retriever, max_workers: int = 4):
     # ── 헬퍼 ──────────────────────────────────────────────────────────
 
     def _profile(name: str) -> StartupProfile:
-        return StartupProfile(name=name, founded_year=0, headquarters="Unknown")
+        """FAISS에서 기업 기본 정보 조회 후 StartupProfile 생성."""
+        import re
+        STAGE_PATTERN = r'(Series [A-D]|Seed|Pre-Seed|Pre-Series A)'
+        try:
+            # 기본 정보 검색
+            docs = retriever.retrieve(f"{name} founded year headquarters location Series", top_k=4)
+            context = " ".join(d.content[:500] for d in docs)
+
+            # 설립연도 추출
+            years = re.findall(r'\b(20(?:1[0-9]|2[0-4]))\b', context)
+            founded = int(years[0]) if years else 0
+
+            # 본사 위치 — "Headquarters: City, Country" 패턴 우선 탐색
+            HQ_BLACKLIST = {"Page", "Series", "The", "AgTech", "Seed", "Pre"}
+            hq = "Unknown"
+            hq_labeled = re.search(
+                r'(?:Headquarters|HQ|Location|본사)[:\s]+([A-Za-z][A-Za-z\s]+(?:,\s*[A-Za-z]+)?)',
+                context, re.IGNORECASE
+            )
+            if hq_labeled:
+                hq = hq_labeled.group(1).strip()
+            else:
+                for m in re.finditer(r'([A-Z][a-z]{2,}(?:,\s*[A-Z][a-zA-Z]+)?)', context):
+                    candidate = m.group(1).strip()
+                    if candidate.split(",")[0].strip() not in HQ_BLACKLIST:
+                        hq = candidate
+                        break
+
+            # 투자 단계 — 먼저 "{name} | Series X" 패턴으로 우선 탐색
+            stage = None
+            targeted = re.search(
+                rf'{re.escape(name)}\s*[|\-–]\s*({STAGE_PATTERN[1:-1]})',
+                context, re.IGNORECASE
+            )
+            if targeted:
+                stage = targeted.group(1)
+            else:
+                stage_match = re.search(STAGE_PATTERN, context, re.IGNORECASE)
+                stage = stage_match.group(1) if stage_match else None
+
+            # stage를 못 찾았으면 전용 쿼리로 재검색
+            if not stage:
+                stage_docs = retriever.retrieve(f"{name} Series A Series B stage funding round", top_k=3)
+                stage_context = " ".join(d.content[:600] for d in stage_docs)
+                targeted2 = re.search(
+                    rf'{re.escape(name)}\s*[|\-–]\s*({STAGE_PATTERN[1:-1]})',
+                    stage_context, re.IGNORECASE
+                )
+                if targeted2:
+                    stage = targeted2.group(1)
+                else:
+                    sm = re.search(STAGE_PATTERN, stage_context, re.IGNORECASE)
+                    stage = sm.group(1) if sm else None
+        except Exception:
+            founded, hq, stage = 0, "Unknown", None
+        return StartupProfile(name=name, founded_year=founded, headquarters=hq, stage=stage)
 
     # ── Step 0 ────────────────────────────────────────────────────────
 
@@ -154,44 +209,76 @@ def build_graph(retriever: Retriever, max_workers: int = 4):
     # ── Step 2–4 ──────────────────────────────────────────────────────
 
     def node_downstream(state: EvaluationState) -> dict:
-        """기업별로 competitor → decision → report 순차 실행."""
-        logger.info("[Step 2–4] Downstream pipeline")
-        results = []
+        """Step 2: top-3 선정 → Step 3: top-1 결정 → Step 4: report"""
+        logger.info("[Step 2] Step 1 점수로 top-3 선정")
+
+        # ── Step 1 composite score 계산 ──────────────────────────────
         step1_company_scores: dict[str, float] = {}
-
-        # Build Step 1 composite score for each company.
-        # This score is used by step2 to select top-3 competitors.
-        for company_name in state["startup_names"]:
-            tech_result = state["tech_analyses"][company_name]
-            market_result = state["market_analyses"][company_name]
-            tech_score = (
-                tech_result.novelty_score + tech_result.defensibility_score
-            ) / 2.0
-            market_score = (
-                market_result.market_growth_potential + market_result.commercial_feasibility_score
-            ) / 2.0
-            step1_company_scores[company_name] = (tech_score + market_score) / 2.0
-
         for name in state["startup_names"]:
-            profile = _profile(name)
-            tech    = state["tech_analyses"][name]
-            market  = state["market_analyses"][name]
-            impact  = state["impact_analyses"][name]
-            moat    = state["moat_analyses"][name]
+            tech   = state["tech_analyses"][name]
+            market = state["market_analyses"][name]
+            tech_score   = (tech.novelty_score + tech.defensibility_score) / 2.0
+            market_score = (market.market_growth_potential / 11.0 + market.commercial_feasibility_score / 25.0) / 2.0
+            step1_company_scores[name] = (tech_score + market_score) / 2.0
 
+        # ── Step 2: top-3 선정 ───────────────────────────────────────
+        sorted_companies = sorted(step1_company_scores.items(), key=lambda x: x[1], reverse=True)
+        top3_names = [name for name, _ in sorted_companies[:3]]
+        logger.info(f"[Step 2] Top-3: {top3_names}")
+
+        # ── Step 3: top-3 각각 investment decision 실행 ──────────────
+        logger.info("[Step 3] Top-3 기업 investment decision 실행")
+        decisions: dict[str, Any] = {}
+        competitors: dict[str, Any] = {}
+        for name in top3_names:
+            profile    = _profile(name)
+            tech       = state["tech_analyses"][name]
+            market     = state["market_analyses"][name]
+            impact     = state["impact_analyses"][name]
+            moat       = state["moat_analyses"][name]
             competitor = competitor_agent.execute(
-                profile,
-                tech,
-                market,
-                retriever,
+                profile, tech, market, retriever,
                 step1_company_scores=step1_company_scores,
             )
-            decision   = decision_agent.execute(profile, tech, market, impact, moat, competitor)
-            evaluation = report_agent.execute(profile, tech, market, impact, moat, competitor, decision)
-            results.append(evaluation)
-            logger.info(f"  {name}: {decision.recommendation}")
+            decision = decision_agent.execute(profile, tech, market, impact, moat, competitor)
+            decisions[name]   = decision
+            competitors[name] = competitor
+            logger.info(
+                f"  {name}: score={decision.overall_assessment_score:.2f} "
+                f"rec={decision.recommendation}"
+            )
 
-        return {"final_results": results}
+        # ── Top-1 or 전체 비권고 분기 ────────────────────────────────
+        threshold = decision_agent.MIN_QUALIFIED_SCORE
+        qualified = {n: d for n, d in decisions.items() if d.overall_assessment_score >= threshold}
+
+        # ── Step 4: Report 생성 ───────────────────────────────────────
+        logger.info("[Step 4] Report 생성")
+        if qualified:
+            # 임계값 통과 기업 중 최고점 → 단일 보고서
+            top1_name = max(qualified, key=lambda n: qualified[n].overall_assessment_score)
+            logger.info(f"[Step 3] Top-1 선정: {top1_name} (score={decisions[top1_name].overall_assessment_score:.2f})")
+            report_targets = [top1_name]
+        else:
+            # 임계값 통과 기업 없음 → top-3 전체 투자 비권고 보고서
+            logger.info("[Step 3] 임계값 통과 기업 없음 — top-3 전체 투자 비권고 보고서 생성")
+            report_targets = top3_names
+
+        evaluations = []
+        for name in report_targets:
+            evaluation = report_agent.execute(
+                _profile(name),
+                state["tech_analyses"][name],
+                state["market_analyses"][name],
+                state["impact_analyses"][name],
+                state["moat_analyses"][name],
+                competitors[name],
+                decisions[name],
+            )
+            evaluations.append(evaluation)
+            logger.info(f"  보고서 생성 완료: {name}")
+
+        return {"final_results": evaluations}
 
     # ── 그래프 조립 ───────────────────────────────────────────────────
 

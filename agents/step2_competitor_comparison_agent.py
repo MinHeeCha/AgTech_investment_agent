@@ -120,14 +120,14 @@ class CompetitorComparisonAgent(BaseAgent):
         try:
             self.log_info(f"Analyzing competitors for {startup.name}")
 
-            novelty_raw = tech_analysis.novelty_score * 7.5
+            novelty_raw       = tech_analysis.novelty_score * 7.5
             defensibility_raw = tech_analysis.defensibility_score * 7.5
-            market_growth_raw = market_analysis.market_growth_potential * 5.0
-            commercial_raw = market_analysis.commercial_feasibility_score * 5.0
+            market_growth_raw = (market_analysis.market_growth_potential / 11.0) * 7.5
+            commercial_raw    = (market_analysis.commercial_feasibility_score / 25.0) * 7.5
 
-            tech_strength = novelty_raw + defensibility_raw
-            market_strength = market_growth_raw + commercial_raw
-            startup_total_score = tech_strength + market_strength
+            tech_strength   = novelty_raw + defensibility_raw    # 0–15
+            market_strength = market_growth_raw + commercial_raw  # 0–15
+            startup_total_score = tech_strength + market_strength  # 0–30
 
             top_3_companies, sorted_scores, used_step1_scores = self._select_top_3_companies(
                 startup_name=startup.name,
@@ -158,14 +158,14 @@ class CompetitorComparisonAgent(BaseAgent):
                     f"Step 1 composite score {startup_total_score:.2f}/25; {rank_text} "
                     f"among {len(sorted_scores)} companies"
                 ),
-                relative_barriers_to_entry=defensibility_raw,     # 0~7.5
-                competitive_advantage_score=startup_total_score,  # 0~25
+                relative_barriers_to_entry=defensibility_raw,                    # 0–7.5
+                competitive_advantage_score=self._clamp(startup_total_score / 30.0),  # 0–1
             )
 
             # Identify relative strengths
             if tech_analysis.novelty_score > 0.65:
                 result.relative_strengths.append("Superior technology differentiation")
-            if market_analysis.market_growth_potential > 0.70:
+            if market_analysis.market_growth_potential > 7.7:
                 result.relative_strengths.append("Larger addressable market opportunity")
             if tech_analysis.defensibility_score > 0.65:
                 result.relative_strengths.append("Stronger barriers-to-entry from defensibility score")
@@ -185,7 +185,7 @@ class CompetitorComparisonAgent(BaseAgent):
                     "No Step 1 company score list provided; ranking used current startup fallback score only"
                 )
 
-            result.summary = f"Competitive Advantage Score: {result.competitive_advantage_score:.2f}. " \
+            result.summary = f"Competitive Advantage Score: {result.competitive_advantage_score:.2f}/1.00. " \
                            f"Top companies from Step 1 total scores: {', '.join(result.comparable_competitors)}."
 
             self.log_info(f"Competitive analysis complete for {startup.name}")

@@ -23,7 +23,7 @@ class InvestmentThresholds:
 
     # Disqualifying conditions
     DISQUALIFYING_CONDITIONS = {
-        "critical_information_missing": 3,  # More than 3 critical gaps → Pass
+        "critical_information_missing": 8,  # More than 8 critical gaps → Pass
         "major_competitive_disadvantage": True,  # Clear competitive failure
         "fundamental_tech_flaws": True,  # Unresolvable technical issues
         "regulatory_blockers": True,  # Insurmountable regulatory issues

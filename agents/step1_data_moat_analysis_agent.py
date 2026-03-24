@@ -231,27 +231,38 @@ class DataMoatAnalysisAgent(BaseAgent):
         )
         parsed = self._parse_llm_response(llm_response)
 
-        # 데이터 해자 점수는 0으로 고정, IP 강점 별도 필드에 기록
+        # IP 해자 루브릭 점수 계산
+        patent_score = {"granted": 8, "pending": 4, "none": 0}.get(
+            parsed.get("patent_level", "none"), 0
+        )
+        trial_score = {"large": 7, "small": 3, "none": 0}.get(
+            parsed.get("trial_level", "none"), 0
+        )
+        partnership_score = {"exclusive": 5, "non_exclusive": 2, "none": 0}.get(
+            parsed.get("partnership_level", "none"), 0
+        )
+        ip_total = patent_score + trial_score + partnership_score  # 0–20
+
         result = DataMoatAnalysisResult(
             moat_type                  = "ip",
-            has_proprietary_datasets   = False,
+            has_proprietary_datasets   = patent_score > 0,
             dataset_size_level         = "not_applicable",
-            contract_level             = "not_applicable",
+            contract_level             = parsed.get("partnership_level", "none"),
             network_effect_level       = "not_applicable",
-            dataset_size_score         = 0,
-            exclusive_contract_score   = 0,
-            network_effect_score       = 0,
-            total_score                = 0,   # 데이터 해자 점수는 0
-            dataset_defensibility_score = 0.0,
-            data_flywheel_potential     = 0.0,
-            moat_strength_score         = 0.0,
+            dataset_size_score         = patent_score,      # 특허 강도 /8
+            exclusive_contract_score   = partnership_score, # 파트너십 /5 (필드에 저장)
+            network_effect_score       = trial_score,       # 검증 /7 (필드에 저장)
+            total_score                = ip_total,
+            dataset_defensibility_score = round(ip_total / 20, 2),
+            data_flywheel_potential     = round(trial_score / 7, 2),
+            moat_strength_score         = round(ip_total / 20, 2),
             # IP 해자 관련 필드
             ip_moat_note               = parsed.get("ip_moat_note", ""),
             patent_count               = parsed.get("patent_count", "미확인"),
             field_trial_description    = parsed.get("field_trial_description", ""),
             big_corp_partnership       = parsed.get("big_corp_partnership", ""),
-            data_assets_description    = "해당 없음 — IP 해자 유형 기업",
-            sensing_pipeline_uniqueness= parsed.get("ip_moat_note", ""),
+            data_assets_description    = parsed.get("ip_moat_note", ""),
+            sensing_pipeline_uniqueness= parsed.get("field_trial_description", ""),
         )
 
         return result
@@ -339,7 +350,7 @@ Return ONLY valid JSON. No explanation outside JSON.
     def _build_ip_moat_prompt(startup_name: str, rag_context: str) -> str:
         return f"""
 You are an AgTech investment analyst. This company is classified as a biotech/physical-product type.
-Data moat is NOT applicable. Evaluate IP moat instead.
+Evaluate IP moat using the rubric below (20 points total).
 
 ## Startup
 - Name: {startup_name}
@@ -347,11 +358,31 @@ Data moat is NOT applicable. Evaluate IP moat instead.
 ## Retrieved Evidence
 {rag_context if rag_context else "No RAG evidence available. Use general knowledge."}
 
+## Scoring Rubric (IP Moat — 20 points total)
+
+### 1. Patent Portfolio (patent_level) — /8점
+- "granted"  → granted patents (domestic or international) → 8 points
+- "pending"  → patent applications filed but not yet granted → 4 points
+- "none"     → no patents found → 0 points
+
+### 2. Field Trial / Technical Validation (trial_level) — /7점
+- "large"    → large-scale field trials with quantified results (e.g. 30%+ yield improvement, 15%+ emissions reduction) → 7 points
+- "small"    → limited pilot or greenhouse trials with some data → 3 points
+- "none"     → no validation data → 0 points
+
+### 3. Big Corp Partnership / Exclusivity (partnership_level) — /5점
+- "exclusive"     → exclusive deal with major agri/food corporation → 5 points
+- "non_exclusive" → non-exclusive partnership or collaboration → 2 points
+- "none"          → no known partnership → 0 points
+
 ## Output Format (JSON only, no markdown)
 {{
-  "ip_moat_note": "핵심 IP 해자 요약 (한국어, 2~3문장). 특허·독점기술·플랫폼 독점성 포함",
+  "ip_moat_note": "핵심 IP 해자 요약 (한국어, 2~3문장). 특허·독점기술·검증 수치 포함",
   "patent_count": "등록 특허 수 또는 '미확인'",
-  "field_trial_description": "필드 트라이얼 규모 (나라 수, 에이커 등, 없으면 빈 문자열)",
+  "patent_level": "granted|pending|none",
+  "trial_level": "large|small|none",
+  "partnership_level": "exclusive|non_exclusive|none",
+  "field_trial_description": "필드 트라이얼 규모 및 수치 (없으면 빈 문자열)",
   "big_corp_partnership": "대형 농화학·식품기업과 계약 현황 (없으면 빈 문자열)"
 }}
 
@@ -397,8 +428,14 @@ Return ONLY valid JSON. No explanation outside JSON.
         is_ip_moat: bool,
     ) -> str:
         if is_ip_moat:
+            score_detail = (
+                f"특허 {result.dataset_size_score}/8점 | "
+                f"필드검증 {result.network_effect_score}/7점 | "
+                f"파트너십 {result.exclusive_contract_score}/5점"
+            )
             return (
-                f"[IP 해자 유형] {company_name}은 데이터 해자 대신 IP 해자로 평가됩니다. "
+                f"[IP 해자 유형] {company_name} — 총점 {result.total_score}/20점. "
+                f"{score_detail}. "
                 f"{result.ip_moat_note or '상세 IP 정보 미확인.'}"
             )
 

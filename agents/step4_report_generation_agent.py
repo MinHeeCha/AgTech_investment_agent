@@ -626,7 +626,7 @@ try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.lib.colors import HexColor, black, white
+    from reportlab.lib.colors import HexColor, white
     from reportlab.lib.enums import TA_LEFT, TA_CENTER
     from reportlab.platypus import (
         SimpleDocTemplate,
@@ -644,6 +644,15 @@ try:
 except ImportError as e:
     REPORTLAB_AVAILABLE = False
     print(f"Warning: ReportLab import failed: {e}", file=sys.stderr)
+    # fallback constants so class definitions don't fail at import time
+    TA_LEFT = 0
+    TA_CENTER = 1
+    HexColor = lambda x: x
+    ParagraphStyle = object
+    black = white = None
+
+import os
+from openai import OpenAI
 
 from models import (
     FullEvaluationResult,
@@ -666,17 +675,24 @@ class ReportGenerationAgent(BaseAgent):
             name="ReportGenerationAgent",
             description="한국어 중심의 비즈니스형 평가 보고서를 PDF와 텍스트로 생성",
         )
+        self._openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         self.pdf_font_name = "Helvetica"
         self.pdf_font_name_bold = "Helvetica-Bold"
         self._init_fonts()
 
-        self.color_primary = HexColor("#17365D")
-        self.color_primary_light = HexColor("#EAF2FF")
-        self.color_border = HexColor("#D7DDE5")
-        self.color_text = HexColor("#222222")
-        self.color_muted = HexColor("#666666")
-        self.color_box_bg = HexColor("#F7F9FC")
-        self.color_section_bg = HexColor("#F3F6FA")
+        self.color_primary       = HexColor("#17365D")   # 다크 네이비 (섹션 헤더 배경)
+        self.color_primary_light = HexColor("#EAF2FF")   # 연한 파랑 (핵심포인트 박스 등)
+        self.color_border        = HexColor("#2E4A6B")   # 어두운 테두리
+        self.color_muted         = HexColor("#8899AA")   # 흐린 텍스트
+        self.color_box_bg        = HexColor("#F7F9FC")
+        self.color_section_bg    = HexColor("#1A2E45")   # 섹션 헤더 배경 (다크)
+        self.color_card_bg       = HexColor("#0B1827")   # 카드/스코어 배경
+        self.color_accent        = HexColor("#4ADE80")   # 라임 그린 (점수 숫자)
+        self.color_subtitle      = HexColor("#60A5FA")   # 라이트 블루 (헤더 서브타이틀)
+        self.color_bar_fill      = HexColor("#4ADE80")   # 바 채움 (accent 동일)
+        self.color_bar_track     = HexColor("#1A3049")   # 바 배경
+        self.color_white         = HexColor("#FFFFFF")
+        self.color_text          = HexColor("#DDE8F2")   # 밝은 텍스트 (다크 배경용)
 
     # -----------------------------
     # 폰트
@@ -787,10 +803,11 @@ class ReportGenerationAgent(BaseAgent):
             if decision.recommendation:
                 value = decision.recommendation.value.upper()
                 mapping = {
-                    "INVEST": "투자 검토",
-                    "PASS": "보류",
-                    "HOLD": "추가 검토",
-                    "REJECT": "투자 비추천",
+                    "INVEST":          "투자 권고",
+                    "HOLD_FOR_REVIEW": "추가 검토 필요",
+                    "HOLD":            "추가 검토 필요",
+                    "PASS":            "투자 비권고",
+                    "REJECT":          "투자 비권고",
                 }
                 return mapping.get(value, value)
         except Exception:
@@ -825,6 +842,7 @@ class ReportGenerationAgent(BaseAgent):
                 investment_decision=investment_decision,
             )
 
+            self._polish_evaluation_fields(evaluation)
             evaluation.report_content = self._generate_text_report(evaluation)
 
             if REPORTLAB_AVAILABLE:
@@ -882,6 +900,88 @@ class ReportGenerationAgent(BaseAgent):
         return "\n".join(lines)
 
     # -----------------------------
+    # LLM 필드 다듬기
+    # -----------------------------
+    def _polish_evaluation_fields(self, evaluation: FullEvaluationResult) -> None:
+        """
+        PDF/txt에 직접 노출되는 텍스트 필드들을 LLM으로 다듬어 in-place 업데이트.
+        실패 시 원본 유지.
+        """
+        t   = evaluation.technology_analysis
+        m   = evaluation.marketability_analysis
+        i   = evaluation.impact_analysis
+        d   = evaluation.data_moat_analysis
+        c   = evaluation.competitor_analysis
+        inv = evaluation.investment_decision
+        startup_name = getattr(evaluation.startup, "name", "Unknown")
+
+        prompt = f"""당신은 AgTech 전문 VC 애널리스트입니다.
+아래 항목들을 전문 투자 보고서 수준의 한국어로 다듬어주세요.
+
+규칙:
+- 원본 수치와 사실을 유지하되 표현을 전문적으로 개선
+- 영어 표현은 한국어로 번역 (고유명사·지표·수치 제외)
+- *_summary 필드: "X점 | Y점" 같은 파이프 구분 나열 형식을 없애고, 투자 보고서처럼 자연스러운 서술 문장 2~3개로 작성
+- core_technology: 기술의 핵심을 한 문장 명사형으로 간결하게 요약 (예: "드론·위성 이미지 기반 정밀 작물 모니터링 플랫폼")
+- relative_strengths, relative_weaknesses, key_strengths, key_risks, evidence_gaps: 반드시 한국어로 작성. 각 항목은 투자자가 바로 읽을 수 있는 명확한 한국어 문장으로 다듬기. 영어 원문이 있으면 반드시 번역할 것. 숫자 뒤 괄호 표기(예: (0.80), (11.00))는 자연스러운 서술로 흡수하거나 제거할 것.
+- rationale은 4~5문장의 투자 의견 단락으로 작성:
+  "[기업명]은 [핵심 기술/강점 서술]. [시장 기회 및 성장 동력]. [경쟁 포지션 또는 차별성]. [주요 리스크 언급]. [투자 권고 및 권장 규모]."
+- JSON으로만 응답 (키 그대로 유지)
+
+## 기업명
+{startup_name}
+
+## 다듬을 항목
+{{
+  "core_technology": {t.core_technology!r},
+  "tech_summary": {t.summary!r},
+  "market_summary": {m.summary!r},
+  "impact_summary": {i.summary!r},
+  "moat_summary": {d.summary!r},
+  "competitor_summary": {c.summary!r},
+  "tech_differentiation": {c.technology_differentiation!r},
+  "relative_strengths": {c.relative_strengths!r},
+  "relative_weaknesses": {c.relative_weaknesses!r},
+  "key_strengths": {inv.key_strengths!r},
+  "key_risks": {inv.key_risks!r},
+  "evidence_gaps": {inv.evidence_gaps!r},
+  "rationale": {inv.rationale!r}
+}}"""
+
+        try:
+            response = self._openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+            import json
+            polished = json.loads(response.choices[0].message.content)
+
+            if polished.get("core_technology"):     t.core_technology = polished["core_technology"]
+            if polished.get("tech_summary"):       t.summary = polished["tech_summary"]
+            if polished.get("market_summary"):     m.summary = polished["market_summary"]
+            if polished.get("impact_summary"):     i.summary = polished["impact_summary"]
+            if polished.get("moat_summary"):       d.summary = polished["moat_summary"]
+            if polished.get("competitor_summary"): c.summary = polished["competitor_summary"]
+            if polished.get("tech_differentiation"):  c.technology_differentiation = polished["tech_differentiation"]
+            if polished.get("relative_strengths") and isinstance(polished["relative_strengths"], list):
+                c.relative_strengths = polished["relative_strengths"]
+            if polished.get("relative_weaknesses") and isinstance(polished["relative_weaknesses"], list):
+                c.relative_weaknesses = polished["relative_weaknesses"]
+            if polished.get("key_strengths") and isinstance(polished["key_strengths"], list):
+                inv.key_strengths = polished["key_strengths"]
+            if polished.get("key_risks") and isinstance(polished["key_risks"], list):
+                inv.key_risks = polished["key_risks"]
+            if polished.get("evidence_gaps") and isinstance(polished["evidence_gaps"], list):
+                inv.evidence_gaps = polished["evidence_gaps"]
+            if polished.get("rationale"):          inv.rationale = polished["rationale"]
+
+            self.log_info(f"[{startup_name}] 텍스트 필드 LLM 다듬기 완료")
+        except Exception as e:
+            self.log_warning(f"LLM 필드 다듬기 실패 ({e}), 원본 유지")
+
+    # -----------------------------
     # PDF 생성
     # -----------------------------
     def _generate_pdf_report(self, evaluation: FullEvaluationResult) -> Optional[str]:
@@ -913,6 +1013,8 @@ class ReportGenerationAgent(BaseAgent):
             story.append(Spacer(1, 0.25 * cm))
             story.extend(self._build_analysis_summary_table(evaluation, styles))
             story.append(Spacer(1, 0.25 * cm))
+            story.extend(self._build_toc(styles))
+            story.append(Spacer(1, 0.25 * cm))
 
             story.extend(self._build_section_block(
                 "기술 분석",
@@ -932,8 +1034,8 @@ class ReportGenerationAgent(BaseAgent):
                 "시장성 분석",
                 [
                     ("목표 시장", self._safe_text(getattr(evaluation.marketability_analysis, "target_market_size", None), "미확인")),
-                    ("성장 가능성", self._safe_percent(getattr(evaluation.marketability_analysis, "market_growth_potential", None))),
-                    ("사업화 가능성", self._safe_percent(getattr(evaluation.marketability_analysis, "commercial_feasibility_score", None))),
+                    ("성장 가능성", self._safe_percent((lambda v: v / 11.0 if v is not None else None)(getattr(evaluation.marketability_analysis, "market_growth_potential", None)))),
+                    ("사업화 가능성", self._safe_percent((lambda v: v / 25.0 if v is not None else None)(getattr(evaluation.marketability_analysis, "commercial_feasibility_score", None)))),
                     ("비즈니스 모델", self._safe_text(getattr(evaluation.marketability_analysis, "business_model", None), "미확인")),
                     ("고객 문제", self._safe_join(getattr(evaluation.marketability_analysis, "customer_pain_points", None), limit=4)),
                     ("도입 장벽", self._safe_join(getattr(evaluation.marketability_analysis, "adoption_barriers", None), limit=4)),
@@ -983,10 +1085,20 @@ class ReportGenerationAgent(BaseAgent):
             ))
 
             story.extend(self._build_risk_strength_gap_boxes(evaluation, styles))
+            story.append(Spacer(1, 0.25 * cm))
+            story.extend(self._build_references(evaluation, styles))
             story.append(Spacer(1, 0.2 * cm))
             story.extend(self._build_footer(evaluation, styles))
 
-            doc.build(story)
+            page_bg = self.color_card_bg  # 다크 배경색
+
+            def _draw_dark_bg(canvas, doc):
+                canvas.saveState()
+                canvas.setFillColor(page_bg)
+                canvas.rect(0, 0, A4[0], A4[1], fill=1, stroke=0)
+                canvas.restoreState()
+
+            doc.build(story, onFirstPage=_draw_dark_bg, onLaterPages=_draw_dark_bg)
             return pdf_path
 
         except Exception as e:
@@ -994,67 +1106,90 @@ class ReportGenerationAgent(BaseAgent):
             return None
 
     # -----------------------------
+    # LLM 서술 블록
+    # -----------------------------
+    def _build_llm_narrative_block(self, report_content: str, styles):
+        """LLM이 다듬은 보고서 텍스트를 PDF 섹션으로 렌더링."""
+        section_title = self._style("llm_title", styles["Heading2"], size=11, color=self.color_primary, bold=True, leading=14, space_after=6)
+        body_style = self._style("llm_body", styles["Normal"], size=9, color=self.color_text, leading=14, space_after=4)
+
+        elements = [Paragraph("AI 종합 분석 의견", section_title), Spacer(1, 0.15 * cm)]
+
+        for line in report_content.split("\n"):
+            line = line.strip()
+            if not line:
+                elements.append(Spacer(1, 0.1 * cm))
+                continue
+            # 헤더 라인 (##, # 으로 시작) → 굵게
+            if line.startswith("##") or line.startswith("#"):
+                header_style = self._style("llm_h", styles["Normal"], size=10, color=self.color_primary, bold=True, leading=14, space_after=2)
+                elements.append(Paragraph(self._escape(line.lstrip("#").strip()), header_style))
+            else:
+                elements.append(Paragraph(self._escape(line), body_style))
+
+        box = Table([[elements]], colWidths=[18.2 * cm])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), self.color_section_bg),
+            ("BOX",        (0, 0), (-1, -1), 0.5, self.color_border),
+            ("TOPPADDING",    (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ]))
+        return [box]
+
+    # -----------------------------
     # PDF 구성요소
     # -----------------------------
     def _build_header_block(self, evaluation, styles):
         startup = evaluation.startup
+        name    = self._safe_text(getattr(startup, "name", None))
+        stage   = self._safe_text(getattr(startup, "stage", None), "미상")
+        hq      = self._safe_text(getattr(startup, "headquarters", None), "미상")
 
-        title = self._style("title", styles["Heading1"], size=20, color=self.color_primary, bold=True, align=TA_LEFT, leading=24, space_after=4)
-        subtitle = self._style("subtitle", styles["Normal"], size=9, color=self.color_muted, align=TA_LEFT, leading=12, space_after=2)
-        company = self._style("company", styles["Normal"], size=15, color=black, bold=True, align=TA_LEFT, leading=18, space_after=0)
+        company_style  = self._style("hdr_company",  styles["Normal"], size=26, color=self.color_white,  bold=True,  align=TA_CENTER, leading=30, space_after=4)
+        sub_style      = self._style("hdr_sub",      styles["Normal"], size=10, color=self.color_subtitle, bold=False, align=TA_CENTER, leading=13, space_after=0)
+        caption_style  = self._style("hdr_caption",  styles["Normal"], size=8,  color=self.color_muted,  bold=False, align=TA_CENTER, leading=11, space_after=0)
 
         box = Table(
-            [[
-                Paragraph("애그테크 스타트업 투자 평가 보고서", title),
-                Paragraph(
-                    self._escape(f"{self._safe_text(getattr(startup, 'name', None))}<br/>{self._safe_text(getattr(startup, 'stage', None), '미상')} · {self._safe_text(getattr(startup, 'headquarters', None), '미상')}"),
-                    company,
-                ),
-                Paragraph(self._escape("기존 분석 결과를 종합한 투자 검토용 개괄 보고서"), subtitle),
-            ]],
+            [[Paragraph(self._escape(name), company_style)],
+             [Paragraph(self._escape(f"{stage}  ·  {hq}  ·"), sub_style)],
+             [Paragraph("기존 분석 결과를 종합한 투자 검토용 개괄 보고서", caption_style)]],
             colWidths=[18.2 * cm],
         )
         box.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), self.color_primary_light),
-            ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-            ("LEFTPADDING", (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-            ("TOPPADDING", (0, 0), (-1, -1), 12),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_card_bg),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
+            ("TOPPADDING",    (0, 0), (-1, 0),  18),
+            ("BOTTOMPADDING", (0, -1), (-1, -1), 14),
+            ("TOPPADDING",    (0, 1), (-1, -1),  4),
+            ("BOTTOMPADDING", (0, 0), (-1, -2),  2),
         ]))
         return [box]
 
     def _build_score_cards(self, evaluation, styles):
         inv = evaluation.investment_decision
 
-        label = self._style("card_label", styles["Normal"], size=8, color=self.color_muted, align=TA_CENTER, leading=10, space_after=2)
-        value = self._style("card_value", styles["Normal"], size=13, color=black, bold=True, align=TA_CENTER, leading=16, space_after=0)
+        label = self._style("card_label", styles["Normal"], size=8,  color=self.color_muted,  align=TA_CENTER, leading=10, space_after=2)
+        value = self._style("card_value", styles["Normal"], size=22, color=self.color_accent, bold=True, align=TA_CENTER, leading=26, space_after=0)
 
         recommendation = self._recommendation_text(inv)
-        overall = self._safe_percent(getattr(inv, "overall_assessment_score", None))
-        confidence = self._safe_percent(getattr(inv, "confidence_score", None))
+        overall        = self._safe_percent(getattr(inv, "overall_assessment_score", None))
+        confidence     = self._safe_percent(getattr(inv, "confidence_score", None))
 
-        data = [[
-            Paragraph("투자 의견", label),
-            Paragraph("종합 점수", label),
-            Paragraph("판단 신뢰도", label),
-        ], [
-            Paragraph(self._escape(recommendation), value),
-            Paragraph(self._escape(overall), value),
-            Paragraph(self._escape(confidence), value),
-        ]]
+        data = [
+            [Paragraph("투자 의견", label),            Paragraph("종합 점수", label),         Paragraph("판단 신뢰도", label)],
+            [Paragraph(self._escape(recommendation), value), Paragraph(self._escape(overall), value), Paragraph(self._escape(confidence), value)],
+        ]
 
         table = Table(data, colWidths=[6.05 * cm, 6.05 * cm, 6.05 * cm])
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), self.color_section_bg),
-            ("BACKGROUND", (0, 1), (-1, 1), white),
-            ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-            ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ("FONTNAME", (0, 0), (-1, 0), self.pdf_font_name_bold),
-            ("FONTNAME", (0, 1), (-1, 1), self.pdf_font_name_bold),
+            ("BACKGROUND", (0, 0), (-1, -1), self.color_card_bg),
+            ("GRID",       (0, 0), (-1, -1), 0.5, self.color_border),
+            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 12),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
         ]))
         return [table]
 
@@ -1069,12 +1204,13 @@ class ReportGenerationAgent(BaseAgent):
 
         table = Table([[Paragraph(text, body)]], colWidths=[18.2 * cm])
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), HexColor("#FDEEEE")),
-            ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-            ("LEFTPADDING", (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-            ("TOPPADDING", (0, 0), (-1, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("BACKGROUND",  (0, 0), (-1, -1), self.color_card_bg),
+            ("LINEBEFORE",  (0, 0), (0, -1),  4, self.color_accent),
+            ("BOX",         (0, 0), (-1, -1),  0.5, self.color_border),
+            ("LEFTPADDING", (0, 0), (-1, -1), 14),
+            ("RIGHTPADDING",(0, 0), (-1, -1), 12),
+            ("TOPPADDING",  (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING",(0,0), (-1, -1), 10),
         ]))
         return [table]
 
@@ -1092,7 +1228,7 @@ class ReportGenerationAgent(BaseAgent):
 
         table = Table(data, colWidths=[2.3 * cm, 6.8 * cm, 2.3 * cm, 6.8 * cm])
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), white),
+            ("BACKGROUND", (0, 0), (-1, -1), self.color_card_bg),
             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
             ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1104,39 +1240,57 @@ class ReportGenerationAgent(BaseAgent):
         return [table]
 
     def _build_analysis_summary_table(self, evaluation, styles):
+        """레퍼런스 PDF 스타일 수평 바 차트."""
         t = evaluation.technology_analysis
         m = evaluation.marketability_analysis
         i = evaluation.impact_analysis
         d = evaluation.data_moat_analysis
         c = evaluation.competitor_analysis
 
-        header = self._style("summary_header", styles["Normal"], size=8, color=self.color_muted, bold=True, align=TA_CENTER)
-        value = self._style("summary_value", styles["Normal"], size=11, color=black, bold=True, align=TA_CENTER)
+        header_style = self._style("bar_header", styles["Normal"], size=9,  color=self.color_white, bold=True,  leading=11, space_after=4)
+        cat_style    = self._style("bar_cat",    styles["Normal"], size=9,  color=self.color_white, bold=False, leading=11, space_after=0)
+        pct_style    = self._style("bar_pct",    styles["Normal"], size=9,  color=self.color_accent, bold=True, leading=11, space_after=0)
 
-        data = [
-            [
-                Paragraph("기술", header),
-                Paragraph("시장성", header),
-                Paragraph("임팩트", header),
-                Paragraph("데이터 해자", header),
-                Paragraph("경쟁력", header),
-            ],
-            [
-                Paragraph(self._escape(self._safe_percent(getattr(t, "novelty_score", None))), value),
-                Paragraph(self._escape(self._safe_percent(getattr(m, "commercial_feasibility_score", None))), value),
-                Paragraph(self._escape(self._safe_percent(getattr(i, "environmental_impact", None))), value),
-                Paragraph(self._escape(self._safe_percent(getattr(d, "moat_strength_score", None))), value),
-                Paragraph(self._escape(self._safe_percent(getattr(c, "competitive_advantage_score", None))), value),
-            ]
+        BAR_TOTAL = 9.0 * cm   # 바 전체 너비
+
+        def _bar_row(label: str, score: float):
+            fill_w = BAR_TOTAL * min(max(score, 0.0), 1.0)
+            track_w = BAR_TOTAL - fill_w
+            bar_parts = []
+            if fill_w > 0:
+                bar_parts.append(Table([[""]], colWidths=[fill_w],
+                    rowHeights=[0.35 * cm]))
+                bar_parts[-1].setStyle(TableStyle([("BACKGROUND", (0,0),(-1,-1), self.color_bar_fill)]))
+            if track_w > 0:
+                bar_parts.append(Table([[""]], colWidths=[track_w],
+                    rowHeights=[0.35 * cm]))
+                bar_parts[-1].setStyle(TableStyle([("BACKGROUND", (0,0),(-1,-1), self.color_bar_track)]))
+            bar_cell = Table([bar_parts], colWidths=[fill_w if fill_w>0 else None, track_w if track_w>0 else None])
+            bar_cell.setStyle(TableStyle([("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                                           ("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
+            return [Paragraph(self._escape(label), cat_style), bar_cell, Paragraph(f"{score:.1%}", pct_style)]
+
+        impact_score = float(getattr(i, "total_impact_score", 0) or 0) / 15.0
+        items = [
+            ("기술력",    float(getattr(t, "novelty_score", 0) or 0)),
+            ("시장성",    float(getattr(m, "commercial_feasibility_score", 0) or 0) / 25.0),
+            ("임팩트",    impact_score),
+            ("데이터 해자", float(getattr(d, "moat_strength_score", 0) or 0)),
+            ("경쟁력",    float(getattr(c, "competitive_advantage_score", 0) or 0)),
         ]
 
-        table = Table(data, colWidths=[3.64 * cm] * 5)
+        title_row = [Paragraph("◆  평가 항목별 점수", header_style), "", ""]
+        rows = [title_row] + [_bar_row(lbl, score) for lbl, score in items]
+
+        table = Table(rows, colWidths=[3.5 * cm, BAR_TOTAL, 2.2 * cm])
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), self.color_section_bg),
-            ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-            ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_card_bg),
+            ("SPAN",          (0, 0), (-1, 0)),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ]))
         return [table]
 
@@ -1144,22 +1298,21 @@ class ReportGenerationAgent(BaseAgent):
         title_style = self._style(
             f"title_{title}",
             styles["Heading2"],
-            size=12,
-            color=self.color_primary,
+            size=11,
+            color=self.color_white,
             bold=True,
-            leading=15,
-            space_after=4,
+            leading=14,
+            space_after=0,
         )
         label = self._style(f"label_{title}", styles["Normal"], size=8, color=self.color_muted, bold=True, leading=10)
         value = self._style(f"value_{title}", styles["Normal"], size=9, color=self.color_text, leading=12)
 
-        title_bar = Table([[Paragraph(self._escape(title), title_style)]], colWidths=[18.2 * cm])
+        title_bar = Table([[Paragraph(f"◆  {self._escape(title)}", title_style)]], colWidths=[18.2 * cm])
         title_bar.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), self.color_section_bg),
-            ("BOX", (0, 0), (-1, -1), 0.6, self.color_border),
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_section_bg),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]))
 
@@ -1172,49 +1325,164 @@ class ReportGenerationAgent(BaseAgent):
 
         detail_table = Table(table_rows, colWidths=[4.0 * cm, 14.2 * cm])
         detail_table.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.6, self.color_border),
-            ("GRID", (0, 0), (-1, -1), 0.4, self.color_border),
-            ("BACKGROUND", (0, 0), (0, -1), HexColor("#FAFBFD")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOX",        (0, 0), (-1, -1), 0.6, self.color_border),
+            ("GRID",       (0, 0), (-1, -1), 0.4, self.color_border),
+            ("BACKGROUND", (0, 0), (-1, -1), self.color_card_bg),
+            ("BACKGROUND", (0, 0), (0,  -1), self.color_section_bg),
+            ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
         ]))
 
         return [Spacer(1, 0.18 * cm), KeepTogether([title_bar, Spacer(1, 0.08 * cm), detail_table])]
 
+    def _safe_bullets(self, items, limit=None, default="해당 없음") -> str:
+        """리스트 항목을 bullet point HTML 문자열로 변환 (항목별 escape 적용)."""
+        if not items:
+            return default
+        clean = [self._safe_text(x, "").strip() for x in items if self._safe_text(x, "").strip()]
+        if not clean:
+            return default
+        if limit:
+            clean = clean[:limit]
+        return "<br/>".join(f"• {self._escape(item)}" for item in clean)
+
     def _build_risk_strength_gap_boxes(self, evaluation, styles):
         inv = evaluation.investment_decision
-        body = self._style("rsg_body", styles["Normal"], size=9, color=self.color_text, leading=12)
+        title_s = self._style("rsg_title_s", styles["Normal"], size=9, color=self.color_accent,  bold=True, leading=12, space_after=4)
+        title_r = self._style("rsg_title_r", styles["Normal"], size=9, color=HexColor("#F87171"), bold=True, leading=12, space_after=4)
+        title_g = self._style("rsg_title_g", styles["Normal"], size=9, color=self.color_muted,   bold=True, leading=12, space_after=4)
+        body    = self._style("rsg_body",    styles["Normal"], size=9, color=self.color_text,    leading=13)
 
-        strengths = Paragraph(
-            f"<b>주요 강점</b><br/>{self._escape(self._safe_join(getattr(inv, 'key_strengths', None), limit=5))}",
-            body,
-        )
-        risks = Paragraph(
-            f"<b>주요 리스크</b><br/>{self._escape(self._safe_join(getattr(inv, 'key_risks', None), limit=5))}",
-            body,
-        )
-        gaps = Paragraph(
-            f"<b>증거 공백</b><br/>{self._escape(self._safe_join(getattr(inv, 'evidence_gaps', None), limit=5))}",
-            body,
-        )
+        strengths_t = Paragraph("주요 강점",  title_s)
+        risks_t     = Paragraph("주요 리스크", title_r)
+        gaps_t      = Paragraph("증거 공백",  title_g)
 
-        table = Table([[strengths, risks, gaps]], colWidths=[6.05 * cm, 6.05 * cm, 6.05 * cm])
+        strengths_b = Paragraph(self._safe_bullets(getattr(inv, "key_strengths",  None), limit=5), body)
+        risks_b     = Paragraph(self._safe_bullets(getattr(inv, "key_risks",       None), limit=5), body)
+        gaps_b      = Paragraph(self._safe_bullets(getattr(inv, "evidence_gaps",   None), limit=5), body)
+
+        data = [[strengths_t, risks_t, gaps_t], [strengths_b, risks_b, gaps_b]]
+        table = Table(data, colWidths=[6.05 * cm, 6.05 * cm, 6.05 * cm])
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), HexColor("#F2FBF5")),
-            ("BACKGROUND", (1, 0), (1, 0), HexColor("#FFF6F5")),
-            ("BACKGROUND", (2, 0), (2, 0), HexColor("#F8F8FA")),
-            ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-            ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_card_bg),
+            ("LINEABOVE",     (0, 0), (0, 0),   3, self.color_accent),
+            ("LINEABOVE",     (1, 0), (1, 0),   3, HexColor("#F87171")),
+            ("LINEABOVE",     (2, 0), (2, 0),   3, self.color_muted),
+            ("BOX",           (0, 0), (-1, -1), 0.5, self.color_border),
+            ("GRID",          (0, 0), (-1, -1), 0.5, self.color_border),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (-1, -1), 10),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ]))
         return [table]
+
+    def _build_toc(self, styles):
+        """목차 블록."""
+        header_style = self._style("toc_hdr", styles["Normal"], size=9,  color=self.color_white, bold=True,  leading=11, space_after=4)
+        num_style    = self._style("toc_num", styles["Normal"], size=9,  color=self.color_muted, bold=False, leading=11, space_after=0)
+        item_style   = self._style("toc_itm", styles["Normal"], size=9,  color=self.color_text,  bold=False, leading=11, space_after=0)
+
+        sections = [
+            ("01", "투자 의견 요약"),
+            ("02", "기업 기본 정보"),
+            ("03", "평가 항목별 점수"),
+            ("04", "기술 분석"),
+            ("05", "시장성 분석"),
+            ("06", "임팩트 분석"),
+            ("07", "데이터 해자 분석"),
+            ("08", "경쟁력 분석"),
+            ("09", "종합 검토"),
+            ("10", "참고 자료"),
+        ]
+
+        title_bar = Table([[Paragraph("◆  목  차", header_style)]], colWidths=[18.2 * cm])
+        title_bar.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_section_bg),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ]))
+
+        rows = []
+        for num, name in sections:
+            rows.append([
+                Paragraph(num, num_style),
+                Paragraph(self._escape(name), item_style),
+            ])
+
+        toc_table = Table(rows, colWidths=[1.2 * cm, 17.0 * cm])
+        toc_table.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_card_bg),
+            ("BACKGROUND",    (0, 0), (0, -1),  self.color_section_bg),
+            ("LINEBELOW",     (0, 0), (-1, -2), 0.3, self.color_border),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING",   (0, 0), (0, -1),  12),
+            ("LEFTPADDING",   (1, 0), (1, -1),  8),
+        ]))
+
+        return [Spacer(1, 0.18 * cm), KeepTogether([title_bar, Spacer(1, 0.08 * cm), toc_table])]
+
+    def _build_references(self, evaluation, styles):
+        """참고 자료 블록 — evidence 에서 source_document 수집."""
+        header_style = self._style("ref_hdr", styles["Normal"], size=9, color=self.color_white, bold=True,  leading=11, space_after=4)
+        num_style    = self._style("ref_num", styles["Normal"], size=8, color=self.color_muted, bold=False, leading=11, space_after=0)
+        src_style    = self._style("ref_src", styles["Normal"], size=8, color=self.color_text,  bold=False, leading=12, space_after=0)
+
+        sources = []
+        seen = set()
+        analyses = [
+            evaluation.technology_analysis,
+            evaluation.marketability_analysis,
+            evaluation.impact_analysis,
+            evaluation.data_moat_analysis,
+            evaluation.competitor_analysis,
+            evaluation.investment_decision,
+        ]
+        for analysis in analyses:
+            for ev in getattr(analysis, "evidence", []):
+                src = (getattr(ev, "source_document", None) or "").strip()
+                if src and src not in seen:
+                    seen.add(src)
+                    sources.append(src)
+
+        if not sources:
+            sources = ["참고 문서 정보 없음"]
+
+        title_bar = Table([[Paragraph("◆  참고 자료", header_style)]], colWidths=[18.2 * cm])
+        title_bar.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_section_bg),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ]))
+
+        rows = []
+        for i, src in enumerate(sources, 1):
+            rows.append([
+                Paragraph(f"[{i:02d}]", num_style),
+                Paragraph(self._escape(src), src_style),
+            ])
+
+        ref_table = Table(rows, colWidths=[1.2 * cm, 17.0 * cm])
+        ref_table.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), self.color_card_bg),
+            ("BACKGROUND",    (0, 0), (0, -1),  self.color_section_bg),
+            ("LINEBELOW",     (0, 0), (-1, -2), 0.3, self.color_border),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING",   (0, 0), (0, -1),  12),
+            ("LEFTPADDING",   (1, 0), (1, -1),  8),
+        ]))
+
+        return [Spacer(1, 0.18 * cm), KeepTogether([title_bar, Spacer(1, 0.08 * cm), ref_table])]
 
     def _build_footer(self, evaluation, styles):
         footer = self._style("footer", styles["Normal"], size=8, color=self.color_muted, align=TA_CENTER, leading=10, space_after=0)

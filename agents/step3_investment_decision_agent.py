@@ -82,7 +82,7 @@ class InvestmentDecisionAgent(BaseAgent):
             # Aggregate scores from all analyses
             category_scores = {
                 "technology": (tech_analysis.novelty_score + tech_analysis.defensibility_score) / 2,
-                "market": market_analysis.commercial_feasibility_score,
+                "market": market_analysis.commercial_feasibility_score / 25.0,
                 "impact": impact_analysis.environmental_impact,
                 "data_moat": data_moat_analysis.moat_strength_score,
                 "competitive": competitor_analysis.competitive_advantage_score,
@@ -120,38 +120,30 @@ class InvestmentDecisionAgent(BaseAgent):
             # Identify key strengths
             strengths = []
             if tech_analysis.novelty_score > 0.65:
-                strengths.append(f"Strong technology novelty ({tech_analysis.novelty_score:.2f})")
-            if market_analysis.market_growth_potential > 0.70:
-                strengths.append(f"Large market opportunity (Growth: {market_analysis.market_growth_potential:.2f})")
+                strengths.append(f"기술 혁신성 우수 (참신성 {tech_analysis.novelty_score:.0%})")
+            if market_analysis.market_growth_potential > 7.7:
+                strengths.append(f"대규모 성장 시장 (성장 잠재력 {market_analysis.market_growth_potential / 11.0:.0%})")
             if impact_analysis.agricultural_impact > 0.70:
-                strengths.append("Significant agricultural impact")
+                strengths.append("농업 생산성 및 식량 안보에 대한 실질적 기여")
             if data_moat_analysis.moat_strength_score > 0.60:
-                strengths.append("Defendable competitive position")
+                strengths.append(f"방어 가능한 경쟁 위치 (해자 점수 {data_moat_analysis.moat_strength_score:.0%})")
             if startup_qualified:
-                strengths.append(
-                    f"Passed step3 qualification threshold ({self.MIN_QUALIFIED_SCORE:.2f}) "
-                    f"within top-3 companies"
-                )
+                strengths.append("상위 3개 기업 선정 — 투자 적격 기준 통과")
             if startup.name in strong_qualified_companies:
-                strengths.append(
-                    f"Strongly qualified in top-3 cohort ({self.STRONG_QUALIFIED_SCORE:.2f}+)"
-                )
+                strengths.append("상위 3개 기업 중 강력 투자 적격 (75%+ 점수)")
 
             # Identify key risks
             risks = []
             if tech_analysis.novelty_score < 0.50:
-                risks.append("Limited technical differentiation")
-            if market_analysis.commercial_feasibility_score < 0.50:
-                risks.append("Commercialization challenges")
+                risks.append("기술 차별성 부족 — 독창성 추가 검토 필요")
+            if market_analysis.commercial_feasibility_score < 12.5:
+                risks.append("사업화 가능성 낮음 — 수익 모델 구체화 필요")
             if critical_gaps > 2:
-                risks.append(f"Multiple critical information gaps ({critical_gaps})")
+                risks.append(f"주요 정보 공백 다수 존재 ({critical_gaps}건) — 추가 실사 필요")
             if competitor_analysis.competitive_advantage_score < 0.50:
-                risks.append("Weak competitive positioning")
+                risks.append("경쟁 우위 취약 — 시장 포지셔닝 전략 재검토 필요")
             if not startup_qualified:
-                risks.append(
-                    f"Did not meet step3 qualification threshold ({self.MIN_QUALIFIED_SCORE:.2f}) "
-                    "within top-3 companies"
-                )
+                risks.append("상위 3개 기업 투자 적격 기준 미달 — 상대적 경쟁력 열위")
 
             # Collect all evidence
             all_evidence = (tech_analysis.evidence + market_analysis.evidence +
@@ -181,14 +173,17 @@ class InvestmentDecisionAgent(BaseAgent):
                 company_scorecard=scorecard,
             )
 
-            # Build rationale
-            decision.rationale = f"Decision: {recommendation_str.upper()}. " \
-                               f"Overall Score: {overall_score:.2f}. " \
-                               f"Confidence: {confidence:.2f}. " \
-                               f"Qualified companies (>= {self.MIN_QUALIFIED_SCORE:.2f}): " \
-                               f"{', '.join(qualified_companies) if qualified_companies else 'None'}. " \
-                               f"Key strengths: {', '.join(strengths[:2])}. " \
-                               f"Key risks: {', '.join(risks[:2])}"
+            # Build rationale (한국어 초안 — LLM polish에서 고도화됨)
+            rec_kr = {"invest": "투자 권고", "hold_for_review": "추가 검토 필요", "pass": "투자 비권고"}.get(
+                recommendation_str, recommendation_str
+            )
+            strengths_summary = "; ".join(strengths[:2]) if strengths else "강점 정보 부족"
+            risks_summary     = "; ".join(risks[:2])     if risks     else "리스크 정보 부족"
+            decision.rationale = (
+                f"{startup.name}은 종합 점수 {overall_score:.0%}, 신뢰도 {confidence:.0%} 기준으로 [{rec_kr}] 판정을 받았습니다. "
+                f"주요 강점: {strengths_summary}. "
+                f"주요 리스크: {risks_summary}."
+            )
 
             self.log_info(f"Investment decision complete: {recommendation_str}")
             self.log_info(f"Overall Assessment Score: {overall_score:.2f}")
