@@ -20,7 +20,7 @@ from agents import (
     ReportGenerationAgent,
 )
 
-AGENT_KEYS = {"tech", "market", "impact", "moat"}
+AGENT_KEYS = ["tech", "market", "impact", "moat"]
 
 
 class EvaluationState(TypedDict):
@@ -35,12 +35,20 @@ class EvaluationState(TypedDict):
     impact_analyses: dict[str, Any]
     moat_analyses:   dict[str, Any]
 
-    # Step 2–4
+    # Step 2: top-3 선정 결과
+    top3_names:           list[str]
+    step1_company_scores: dict[str, float]
+
+    # Step 3: 경쟁사·투자 판단 결과
+    competitor_analyses:  dict[str, Any]
+    investment_decisions: dict[str, Any]
+
+    # Step 4: 최종 보고서
     final_results: list[Any]
 
     # HITL
     human_feedback:    Optional[str]
-    reanalyze_targets: list[str]   # "tech" | "market" | "impact" | "moat"
+    reanalyze_targets: list[str]
     reanalysis_count:  int
 
 
@@ -206,100 +214,157 @@ def build_graph(retriever: Retriever, max_workers: int = 4):
     #     logger.info(f"[Reanalysis] 재실행 대상: {targets}")
     #     return [Send(f"node_{t}", state) for t in targets]
 
-    # ── Step 2–4 ──────────────────────────────────────────────────────
+    # ── Step 2: top-3 선정 + 경쟁사 분석 ─────────────────────────────
 
-    def node_downstream(state: EvaluationState) -> dict:
-        """Step 2: top-3 선정 → Step 3: top-1 결정 → Step 4: report"""
+    def node_competitor(state: EvaluationState) -> dict:
+        """Step 1 점수로 top-3 선정 후 각 기업 경쟁사 분석 실행."""
         logger.info("[Step 2] Step 1 점수로 top-3 선정")
 
-        # ── Step 1 composite score 계산 ──────────────────────────────
-        step1_company_scores: dict[str, float] = {}
+        step1_scores: dict[str, float] = {}
         for name in state["startup_names"]:
             tech   = state["tech_analyses"][name]
             market = state["market_analyses"][name]
             tech_score   = (tech.novelty_score + tech.defensibility_score) / 2.0
             market_score = (market.market_growth_potential / 11.0 + market.commercial_feasibility_score / 25.0) / 2.0
-            step1_company_scores[name] = (tech_score + market_score) / 2.0
+            step1_scores[name] = (tech_score + market_score) / 2.0
 
-        # ── Step 2: top-3 선정 ───────────────────────────────────────
-        sorted_companies = sorted(step1_company_scores.items(), key=lambda x: x[1], reverse=True)
-        top3_names = [name for name, _ in sorted_companies[:3]]
-        logger.info(f"[Step 2] Top-3: {top3_names}")
+        sorted_companies = sorted(step1_scores.items(), key=lambda x: x[1], reverse=True)
+        top3 = [name for name, _ in sorted_companies[:3]]
+        logger.info(f"[Step 2] Top-3: {top3}")
 
-        # ── Step 3: top-3 각각 investment decision 실행 ──────────────
+        competitors: dict[str, Any] = {}
+        for name in top3:
+            profile = _profile(name)
+            tech    = state["tech_analyses"][name]
+            market  = state["market_analyses"][name]
+            competitors[name] = competitor_agent.execute(
+                profile, tech, market, retriever,
+                step1_company_scores=step1_scores,
+            )
+            logger.info(f"  경쟁사 분석 완료: {name}")
+
+        return {
+            "top3_names":           top3,
+            "step1_company_scores": step1_scores,
+            "competitor_analyses":  competitors,
+        }
+
+    # ── Step 3: 투자 판단 ────────────────────────────────────────────
+
+    def node_decision(state: EvaluationState) -> dict:
+        """top-3 각 기업에 대해 투자 판단 실행."""
         logger.info("[Step 3] Top-3 기업 investment decision 실행")
         decisions: dict[str, Any] = {}
-        competitors: dict[str, Any] = {}
-        for name in top3_names:
-            profile    = _profile(name)
-            tech       = state["tech_analyses"][name]
-            market     = state["market_analyses"][name]
-            impact     = state["impact_analyses"][name]
-            moat       = state["moat_analyses"][name]
-            competitor = competitor_agent.execute(
-                profile, tech, market, retriever,
-                step1_company_scores=step1_company_scores,
+        for name in state["top3_names"]:
+            profile = _profile(name)
+            decision = decision_agent.execute(
+                profile,
+                state["tech_analyses"][name],
+                state["market_analyses"][name],
+                state["impact_analyses"][name],
+                state["moat_analyses"][name],
+                state["competitor_analyses"][name],
             )
-            decision = decision_agent.execute(profile, tech, market, impact, moat, competitor)
-            decisions[name]   = decision
-            competitors[name] = competitor
+            decisions[name] = decision
             logger.info(
                 f"  {name}: score={decision.overall_assessment_score:.2f} "
                 f"rec={decision.recommendation}"
             )
+        return {"investment_decisions": decisions}
 
-        # ── Top-1 or 전체 비권고 분기 ────────────────────────────────
+    # ── 조건 분기 함수 ────────────────────────────────────────────────
+
+    def route_after_decision(state: EvaluationState) -> str:
+        """임계값 통과 기업 유무에 따라 보고서 생성 경로 결정."""
         threshold = decision_agent.MIN_QUALIFIED_SCORE
-        qualified = {n: d for n, d in decisions.items() if d.overall_assessment_score >= threshold}
-
-        # ── Step 4: Report 생성 ───────────────────────────────────────
-        logger.info("[Step 4] Report 생성")
+        decisions = state["investment_decisions"]
+        qualified = [n for n, d in decisions.items() if d.overall_assessment_score >= threshold]
         if qualified:
-            # 임계값 통과 기업 중 최고점 → 단일 보고서
-            top1_name = max(qualified, key=lambda n: qualified[n].overall_assessment_score)
-            logger.info(f"[Step 3] Top-1 선정: {top1_name} (score={decisions[top1_name].overall_assessment_score:.2f})")
-            report_targets = [top1_name]
+            logger.info(f"[분기] 적격 기업 {len(qualified)}개 → 단일 보고서")
+            return "report_single"
         else:
-            # 임계값 통과 기업 없음 → top-3 전체 투자 비권고 보고서
-            logger.info("[Step 3] 임계값 통과 기업 없음 — top-3 전체 투자 비권고 보고서 생성")
-            report_targets = top3_names
+            logger.info("[분기] 적격 기업 없음 → 전체 비권고 보고서")
+            return "report_all"
 
+    # ── Step 4: 보고서 생성 ───────────────────────────────────────────
+
+    def node_report_single(state: EvaluationState) -> dict:
+        """임계값 통과 기업 중 최고점 1개에 대해 보고서 생성."""
+        logger.info("[Step 4] 단일 보고서 생성")
+        threshold = decision_agent.MIN_QUALIFIED_SCORE
+        decisions = state["investment_decisions"]
+        qualified = {n: d for n, d in decisions.items() if d.overall_assessment_score >= threshold}
+        top1 = max(qualified, key=lambda n: qualified[n].overall_assessment_score)
+        logger.info(f"  Top-1: {top1} (score={decisions[top1].overall_assessment_score:.2f})")
+
+        evaluation = report_agent.execute(
+            _profile(top1),
+            state["tech_analyses"][top1],
+            state["market_analyses"][top1],
+            state["impact_analyses"][top1],
+            state["moat_analyses"][top1],
+            state["competitor_analyses"][top1],
+            decisions[top1],
+        )
+        logger.info(f"  보고서 생성 완료: {top1}")
+        return {"final_results": [evaluation]}
+
+    def node_report_all(state: EvaluationState) -> dict:
+        """임계값 통과 기업 없음 — top-3 전체 투자 비권고 보고서 생성."""
+        logger.info("[Step 4] top-3 전체 투자 비권고 보고서 생성")
         evaluations = []
-        for name in report_targets:
+        for name in state["top3_names"]:
             evaluation = report_agent.execute(
                 _profile(name),
                 state["tech_analyses"][name],
                 state["market_analyses"][name],
                 state["impact_analyses"][name],
                 state["moat_analyses"][name],
-                competitors[name],
-                decisions[name],
+                state["competitor_analyses"][name],
+                state["investment_decisions"][name],
             )
             evaluations.append(evaluation)
             logger.info(f"  보고서 생성 완료: {name}")
-
         return {"final_results": evaluations}
 
     # ── 그래프 조립 ───────────────────────────────────────────────────
 
     graph = StateGraph(EvaluationState)
 
-    graph.add_node("node_discovery",  node_discovery)
-    graph.add_node("node_tech",       node_tech)
-    graph.add_node("node_market",     node_market)
-    graph.add_node("node_impact",     node_impact)
-    graph.add_node("node_moat",       node_moat)
-    graph.add_node("node_downstream", node_downstream)
+    graph.add_node("node_discovery",    node_discovery)
+    graph.add_node("node_tech",         node_tech)
+    graph.add_node("node_market",       node_market)
+    graph.add_node("node_impact",       node_impact)
+    graph.add_node("node_moat",         node_moat)
+    graph.add_node("node_competitor",   node_competitor)
+    graph.add_node("node_decision",     node_decision)
+    graph.add_node("node_report_single", node_report_single)
+    graph.add_node("node_report_all",   node_report_all)
 
     # Step 0 → Step 1 fan-out
     graph.set_entry_point("node_discovery")
     for agent in AGENT_KEYS:
         graph.add_edge("node_discovery", f"node_{agent}")
 
-    # Step 1 → downstream fan-in
+    # Step 1 → Step 2 fan-in
     for agent in AGENT_KEYS:
-        graph.add_edge(f"node_{agent}", "node_downstream")
+        graph.add_edge(f"node_{agent}", "node_competitor")
 
-    graph.add_edge("node_downstream", END)
+    # Step 2 → Step 3
+    graph.add_edge("node_competitor", "node_decision")
+
+    # Step 3 → Step 4 (조건 분기)
+    graph.add_conditional_edges(
+        "node_decision",
+        route_after_decision,
+        {
+            "report_single": "node_report_single",
+            "report_all":    "node_report_all",
+        },
+    )
+
+    # Step 4 → END
+    graph.add_edge("node_report_single", END)
+    graph.add_edge("node_report_all",    END)
 
     return graph.compile(checkpointer=MemorySaver())
