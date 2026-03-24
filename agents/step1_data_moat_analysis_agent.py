@@ -1,7 +1,9 @@
 """Data Moat Analysis Agent - AgTech Investment Rubric C항목 기반 데이터 해자 평가."""
 
+import os
 from typing import Optional
-from models import DataMoatAnalysisResult, EvidenceItem, StartupProfile
+from openai import OpenAI
+from models import DataMoatAnalysisResult, EvidenceItem
 from rag import Retriever
 from .base_agent import BaseAgent
 
@@ -61,19 +63,20 @@ class DataMoatAnalysisAgent(BaseAgent):
                 "데이터 독점 계약(7점), 네트워크 효과(5점) — 총 20점 채점"
             ),
         )
+        self._openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     # ── 퍼블릭 진입점 ──────────────────────────────────────────────────────────
     def execute(
         self,
-        startup: StartupProfile,
+        startup_name: str,
         retriever: Optional[Retriever] = None,
     ) -> DataMoatAnalysisResult:
         """
         데이터 해자 분석 실행.
 
         Args:
-            startup  : 평가 대상 스타트업 프로파일
-            retriever: RAG 검색기 (없으면 LLM 추론만 사용)
+            startup_name: 평가 대상 스타트업 이름
+            retriever   : RAG 검색기 (없으면 LLM 추론만 사용)
 
         Returns:
             DataMoatAnalysisResult  (total_score 포함)
@@ -81,24 +84,24 @@ class DataMoatAnalysisAgent(BaseAgent):
         self.start_execution()
 
         try:
-            self.log_info(f"[DataMoat] 시작 — {startup.name}")
+            self.log_info(f"[DataMoat] 시작 — {startup_name}")
 
             # ── Step 1. 회사 유형 판별 ─────────────────────────────────────
-            is_ip_moat_type = startup.name.lower() in IP_MOAT_COMPANIES
+            is_ip_moat_type = startup_name.lower() in IP_MOAT_COMPANIES
 
             if is_ip_moat_type:
-                result = self._evaluate_ip_moat(startup, retriever)
+                result = self._evaluate_ip_moat(startup_name, retriever)
             else:
-                result = self._evaluate_data_moat(startup, retriever)
+                result = self._evaluate_data_moat(startup_name, retriever)
 
             # ── Step 2. 누락 정보 플래그 ───────────────────────────────────
             self._flag_missing_information(result)
 
             # ── Step 3. 최종 요약 문장 생성 ────────────────────────────────
-            result.summary = self._build_summary(startup.name, result, is_ip_moat_type)
+            result.summary = self._build_summary(startup_name, result, is_ip_moat_type)
 
             self.log_info(
-                f"[DataMoat] 완료 — {startup.name} | "
+                f"[DataMoat] 완료 — {startup_name} | "
                 f"총점: {result.total_score}/20 | 유형: "
                 f"{'IP 해자' if is_ip_moat_type else '데이터 해자'}"
             )
@@ -110,7 +113,7 @@ class DataMoatAnalysisAgent(BaseAgent):
     # ── 데이터 해자 평가 (플랫폼형·하드웨어+데이터형) ─────────────────────────
     def _evaluate_data_moat(
         self,
-        startup: StartupProfile,
+        startup_name: str,
         retriever: Optional[Retriever],
     ) -> DataMoatAnalysisResult:
         """
@@ -120,9 +123,9 @@ class DataMoatAnalysisAgent(BaseAgent):
         rag_context = ""
         if retriever:
             queries = [
-                f"{startup.name} acres hectares farmers data coverage",
-                f"{startup.name} exclusive data partnership agreement",
-                f"{startup.name} data flywheel network effect model improvement",
+                f"{startup_name} acres hectares farmers data coverage",
+                f"{startup_name} exclusive data partnership agreement",
+                f"{startup_name} data flywheel network effect model improvement",
             ]
             docs = []
             for q in queries:
@@ -144,7 +147,7 @@ class DataMoatAnalysisAgent(BaseAgent):
             )
 
         # LLM 채점 프롬프트
-        prompt = self._build_data_moat_prompt(startup, rag_context)
+        prompt = self._build_data_moat_prompt(startup_name, rag_context)
         llm_response = self._openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -187,7 +190,7 @@ class DataMoatAnalysisAgent(BaseAgent):
             for doc in unique_docs[:4]:
                 result.evidence.append(
                     EvidenceItem(
-                        claim               = f"{startup.name} 데이터 자산 근거",
+                        claim               = f"{startup_name} 데이터 자산 근거",
                         source_document     = doc.source,
                         evidence_type       = "data_asset",
                         confidence          = doc.relevance_score,
@@ -200,7 +203,7 @@ class DataMoatAnalysisAgent(BaseAgent):
     # ── IP 해자 평가 (바이오·제품형 폴백) ─────────────────────────────────────
     def _evaluate_ip_moat(
         self,
-        startup: StartupProfile,
+        startup_name: str,
         retriever: Optional[Retriever],
     ) -> DataMoatAnalysisResult:
         """
@@ -211,7 +214,7 @@ class DataMoatAnalysisAgent(BaseAgent):
         if retriever:
             docs = self.retrieve_documents(
                 retriever,
-                f"{startup.name} patent license exclusive agreement field trial",
+                f"{startup_name} patent license exclusive agreement field trial",
                 top_k=5,
             )
             rag_context = "\n\n".join(
@@ -219,7 +222,7 @@ class DataMoatAnalysisAgent(BaseAgent):
                 for d in docs[:4]
             )
 
-        prompt = self._build_ip_moat_prompt(startup, rag_context)
+        prompt = self._build_ip_moat_prompt(startup_name, rag_context)
         llm_response = self._openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -292,15 +295,12 @@ class DataMoatAnalysisAgent(BaseAgent):
 
     # ── 프롬프트 빌더 ─────────────────────────────────────────────────────────
     @staticmethod
-    def _build_data_moat_prompt(startup: StartupProfile, rag_context: str) -> str:
+    def _build_data_moat_prompt(startup_name: str, rag_context: str) -> str:
         return f"""
 You are an AgTech investment analyst. Evaluate the data moat of the following startup.
 
 ## Startup
-- Name: {startup.name}
-- Domain: {startup.domain}
-- Description: {startup.description}
-- Funding Stage: {startup.funding_stage}
+- Name: {startup_name}
 
 ## Retrieved Evidence
 {rag_context if rag_context else "No RAG evidence available. Use general knowledge."}
@@ -336,15 +336,13 @@ Return ONLY valid JSON. No explanation outside JSON.
 """
 
     @staticmethod
-    def _build_ip_moat_prompt(startup: StartupProfile, rag_context: str) -> str:
+    def _build_ip_moat_prompt(startup_name: str, rag_context: str) -> str:
         return f"""
 You are an AgTech investment analyst. This company is classified as a biotech/physical-product type.
 Data moat is NOT applicable. Evaluate IP moat instead.
 
 ## Startup
-- Name: {startup.name}
-- Domain: {startup.domain}
-- Description: {startup.description}
+- Name: {startup_name}
 
 ## Retrieved Evidence
 {rag_context if rag_context else "No RAG evidence available. Use general knowledge."}
