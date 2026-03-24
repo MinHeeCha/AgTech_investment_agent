@@ -807,10 +807,10 @@ MIT 라이선스 — 자세한 내용은 LICENSE 파일 참조
 ---
 
 ## Contirbutors
-3002 기동주: Startup, Data_moat_analysis Agent
-3006 김정우: marketability_evaluation, competitor_comparison Agent
-3012 박유빈: 벡터DB, Startup, Impact_evaluation Agent 
-3027 차민희: technology_summary, investment_decision Agent
+- 3002 기동주: Startup, Data_moat_analysis Agent
+- 3006 김정우: marketability_evaluation, competitor_comparison Agent
+- 3012 박유빈: 벡터DB, Startup, Impact_evaluation Agent 
+- 3027 차민희: technology_summary, investment_decision Agent
 ---
 **최종 업데이트**: 2026년 3월
 **버전**: 1.0.0
