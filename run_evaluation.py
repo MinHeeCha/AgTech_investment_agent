@@ -22,7 +22,7 @@ if __name__ == "__main__":
     startup_names = [
         "TechFarm AI",
         "SoilSense Technologies",
-        "CropOptima",
+        "Regrow",
     ]
 
     startup_infos = {
@@ -40,12 +40,13 @@ if __name__ == "__main__":
             "mission": "Real-time soil health monitoring",
             "website": "https://soilsense.example.com",
         },
-        "CropOptima": {
+        "Regrow": {
             "founded_year": 2020,
-            "headquarters": "Des Moines, IA",
+            "headquarters": "San Francisco, CA",
             "stage": "Series B",
-            "mission": "Optimizing crop yields with predictive analytics",
-            "website": "https://cropoptima.example.com",
+            "name": "Regrow",
+            "mission": "Building the agriculture resilience platform for measuring and reducing on-farm emissions",
+            "website": "https://www.regrow.ag",
         },
     }
 
