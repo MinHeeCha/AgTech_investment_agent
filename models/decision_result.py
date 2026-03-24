@@ -26,3 +26,6 @@ class InvestmentDecision:
     rationale: str = ""
     evidence: list[EvidenceItem] = field(default_factory=list)
     evidence_gaps: list[str] = field(default_factory=list)
+    evaluated_top_companies: list[str] = field(default_factory=list)
+    qualified_companies: list[str] = field(default_factory=list)
+    company_scorecard: dict[str, float] = field(default_factory=dict)

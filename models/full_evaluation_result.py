@@ -57,6 +57,9 @@ class FullEvaluationResult:
                 "recommendation": self.investment_decision.recommendation.value,
                 "confidence_score": self.investment_decision.confidence_score,
                 "overall_assessment_score": self.investment_decision.overall_assessment_score,
+                "evaluated_top_companies": self.investment_decision.evaluated_top_companies,
+                "qualified_companies": self.investment_decision.qualified_companies,
+                "company_scorecard": self.investment_decision.company_scorecard,
             },
             "timestamp": self.evaluation_timestamp.isoformat(),
         }

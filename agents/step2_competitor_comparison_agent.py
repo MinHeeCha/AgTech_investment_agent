@@ -1,9 +1,11 @@
-"""Competitor Comparison Agent - Compares startup with competitors."""
+"""Competitor Comparison Agent - Selects top competitors from Step 1 scores."""
 
-from typing import Optional
+from typing import Any, Optional
 from models import (
-    CompetitorAnalysisResult, EvidenceItem, StartupProfile,
-    TechnologyAnalysisResult, MarketabilityAnalysisResult
+    CompetitorAnalysisResult,
+    StartupProfile,
+    TechnologyAnalysisResult,
+    MarketabilityAnalysisResult,
 )
 from rag import Retriever
 from .base_agent import BaseAgent
@@ -18,18 +20,97 @@ class CompetitorComparisonAgent(BaseAgent):
             description="Compares analyzed startup with comparable competitors",
         )
 
-    def execute(self, startup: StartupProfile,
-               tech_analysis: TechnologyAnalysisResult,
-               market_analysis: MarketabilityAnalysisResult,
-               retriever: Optional[Retriever] = None) -> CompetitorAnalysisResult:
+    @staticmethod
+    def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
+        """Clamp score into [minimum, maximum]."""
+        return max(minimum, min(maximum, value))
+
+    @staticmethod
+    def _extract_score(payload: Any) -> Optional[float]:
+        """Extract score from multiple Step 1 payload formats."""
+        if isinstance(payload, (int, float)):
+            return float(payload)
+        if not isinstance(payload, dict):
+            return None
+
+        for key in ("total_score", "overall_score", "score"):
+            value = payload.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+        return None
+
+    @classmethod
+    def _normalize_step1_scores(
+        cls,
+        step1_company_scores: Optional[Any]
+    ) -> list[tuple[str, float]]:
         """
-        Perform competitive comparison.
+        Normalize Step 1 companies + scores to [(company_name, score)].
+
+        Supported formats:
+        - {"A": 0.78, "B": 0.66}
+        - {"A": {"total_score": 0.78}, "B": {"score": 0.66}}
+        - [{"name": "A", "total_score": 0.78}, ...]
+        """
+        normalized: list[tuple[str, float]] = []
+
+        if isinstance(step1_company_scores, dict):
+            for company_name, payload in step1_company_scores.items():
+                score = cls._extract_score(payload)
+                if score is not None:
+                    normalized.append((str(company_name), score))
+            return normalized
+
+        if isinstance(step1_company_scores, list):
+            for item in step1_company_scores:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") or item.get("company") or item.get("company_name")
+                if not name:
+                    continue
+                score = cls._extract_score(item)
+                if score is not None:
+                    normalized.append((str(name), score))
+
+        return normalized
+
+    @classmethod
+    def _select_top_3_companies(
+        cls,
+        startup_name: str,
+        startup_fallback_score: float,
+        step1_company_scores: Optional[Any]
+    ) -> tuple[list[str], list[tuple[str, float]], bool]:
+        """Return top-3 company names from Step 1 scores."""
+        scores = cls._normalize_step1_scores(step1_company_scores)
+        used_step1_scores = len(scores) > 0
+
+        # Ensure current startup exists in ranking, even if Step 1 payload omits it.
+        existing_names = {name for name, _ in scores}
+        if startup_name not in existing_names:
+            scores.append((startup_name, startup_fallback_score))
+
+        sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
+        top_3 = [name for name, _ in sorted_scores[:3]]
+        return top_3, sorted_scores, used_step1_scores
+
+    def execute(
+        self,
+        startup: StartupProfile,
+        tech_analysis: TechnologyAnalysisResult,
+        market_analysis: MarketabilityAnalysisResult,
+        retriever: Optional[Retriever] = None,
+        step1_company_scores: Optional[Any] = None
+    ) -> CompetitorAnalysisResult:
+        """
+        Perform competitive comparison from Step 1 score ranking.
 
         Args:
             startup: Startup profile
             tech_analysis: Technology analysis results
             market_analysis: Market analysis results
-            retriever: Optional Retriever for competitor information
+            retriever: Kept for backward compatibility (not used)
+            step1_company_scores: Step 1 company score data used for top-3 selection
 
         Returns:
             CompetitorAnalysisResult
@@ -39,17 +120,45 @@ class CompetitorComparisonAgent(BaseAgent):
         try:
             self.log_info(f"Analyzing competitors for {startup.name}")
 
+            tech_strength = self._clamp(
+                (tech_analysis.novelty_score + tech_analysis.defensibility_score) / 2.0
+            )
+            market_strength = self._clamp(
+                (market_analysis.market_growth_potential + market_analysis.commercial_feasibility_score) / 2.0
+            )
+            startup_total_score = self._clamp((tech_strength + market_strength) / 2.0)
+
+            top_3_companies, sorted_scores, used_step1_scores = self._select_top_3_companies(
+                startup_name=startup.name,
+                startup_fallback_score=startup_total_score,
+                step1_company_scores=step1_company_scores,
+            )
+            top_3_score_map = {
+                company_name: score
+                for company_name, score in sorted_scores[:3]
+            }
+
+            startup_rank = next(
+                (idx + 1 for idx, (name, _) in enumerate(sorted_scores) if name == startup.name),
+                None
+            )
+            rank_text = f"ranked #{startup_rank}" if startup_rank else "rank unavailable"
+
             result = CompetitorAnalysisResult(
-                comparable_competitors=[
-                    "Competitor A - Satellite imagery platform",
-                    "Competitor B - Drone-based monitoring",
-                    "Competitor C - AI crop analytics",
-                ],
-                technology_differentiation="Proprietary multi-sensor fusion approach vs single-modality competitors",
-                technology_differentiation_score=0.72,
-                market_position_analysis="Strong positioning in mid-market farmers, emerging in enterprise segment",
-                relative_barriers_to_entry=0.75,
-                competitive_advantage_score=0.71,
+                comparable_competitors=top_3_companies,
+                comparable_competitor_scores=top_3_score_map,
+                technology_differentiation=(
+                    f"Derived from Step 1 tech signals "
+                    f"(novelty={tech_analysis.novelty_score:.2f}, "
+                    f"defensibility={tech_analysis.defensibility_score:.2f})"
+                ),
+                technology_differentiation_score=tech_strength,
+                market_position_analysis=(
+                    f"Step 1 composite score {startup_total_score:.2f}; {rank_text} "
+                    f"among {len(sorted_scores)} companies"
+                ),
+                relative_barriers_to_entry=tech_analysis.defensibility_score,
+                competitive_advantage_score=self._clamp((0.6 * tech_strength) + (0.4 * market_strength)),
             )
 
             # Identify relative strengths
@@ -57,37 +166,26 @@ class CompetitorComparisonAgent(BaseAgent):
                 result.relative_strengths.append("Superior technology differentiation")
             if market_analysis.market_growth_potential > 0.70:
                 result.relative_strengths.append("Larger addressable market opportunity")
-            result.relative_strengths.append("Unique data moat potential")
+            if tech_analysis.defensibility_score > 0.65:
+                result.relative_strengths.append("Stronger barriers-to-entry from defensibility score")
 
             # Identify relative weaknesses
             result.relative_weaknesses = [
-                "Lower brand recognition than established players",
-                "Smaller financial resources vs well-funded competitors",
-                "Earlier stage product maturity",
+                "Step 2 uses Step 1 score ranking only (no external competitor retrieval)",
+                "Ranking quality depends on completeness of Step 1 company scores",
             ]
 
-            # Retrieve competitor information if retriever available
-            if retriever:
-                comp_docs = self.retrieve_documents(
-                    retriever,
-                    f"{startup.name} competitors competitive landscape comparison",
-                    top_k=5
+            if retriever is not None:
+                result.missing_information.append(
+                    "Retriever input was ignored by design for Step 2 ranking mode"
+                )
+            if not used_step1_scores:
+                result.missing_information.append(
+                    "No Step 1 company score list provided; ranking used current startup fallback score only"
                 )
 
-                # Create evidence from competitor documents
-                for doc in comp_docs[:3]:
-                    evidence = EvidenceItem(
-                        claim=f"Competitive information from {doc.source}",
-                        source_document=doc.source,
-                        evidence_type="competitive_analysis",
-                        confidence=doc.relevance_score,
-                        supporting_details=doc.content[:200] if doc.content else None
-                    )
-                    result.evidence.append(evidence)
-
             result.summary = f"Competitive Advantage Score: {result.competitive_advantage_score:.2f}. " \
-                           f"Key Differentiation: {result.technology_differentiation}. " \
-                           f"Competitors: {len(result.comparable_competitors)} identified."
+                           f"Top companies from Step 1 total scores: {', '.join(result.comparable_competitors)}."
 
             self.log_info(f"Competitive analysis complete for {startup.name}")
 

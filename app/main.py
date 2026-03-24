@@ -5,9 +5,13 @@ import json
 from pathlib import Path
 from typing import Optional, List
 
+from dotenv import load_dotenv
 from app.config import Config
 from app.orchestrator import AgentOrchestrator
 from rag import Retriever, DocumentLoader
+
+# Load environment variables from .env if present.
+load_dotenv()
 
 
 def setup_logging(config: Config):
@@ -45,15 +49,15 @@ def initialize_retriever(logger: logging.Logger) -> Retriever:
     return Retriever()
 
 
-def main(startup_names: List[str],
+def main(startup_names: Optional[List[str]] = None,
          startup_infos: Optional[dict] = None,
          document_paths: Optional[List[str]] = None):
     """
     Main evaluation pipeline.
 
     Args:
-        startup_names: List of startup names to evaluate
-        startup_infos: Optional startup information dict
+        startup_names: Deprecated. Step0 discovery is used instead.
+        startup_infos: Deprecated. Step0 discovery is used instead.
         document_paths: Optional paths to documents for RAG
     """
     # Setup configuration and logging
@@ -95,9 +99,18 @@ def main(startup_names: List[str],
     output_dir = Path(config.OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Evaluate startups
-    logger.info(f"Starting evaluation of {len(startup_names)} startups")
-    results = orchestrator.evaluate_multiple_startups(startup_names, startup_infos)
+    # Evaluate startups from Step 0 discovery
+    if startup_names:
+        logger.warning(
+            "startup_names input is ignored. Running Step0 discovery via orchestrator.evaluate_all()."
+        )
+    if startup_infos:
+        logger.warning(
+            "startup_infos input is ignored. Running Step0 discovery via orchestrator.evaluate_all()."
+        )
+
+    logger.info("Starting evaluation from Step0 discovery")
+    results = orchestrator.evaluate_all()
 
     # Save results
     logger.info(f"Saving {len(results)} evaluation results")
@@ -132,29 +145,5 @@ def main(startup_names: List[str],
 
 
 if __name__ == "__main__":
-    # Example usage
-    startup_names = ["TechFarm AI", "SoilSense Technologies", "CropOptima"]
-
-    startup_infos = {
-        "TechFarm AI": {
-            "founded_year": 2021,
-            "headquarters": "San Francisco, CA",
-            "stage": "Series A",
-            "mission": "Democratizing precision agriculture with AI",
-        },
-        "SoilSense Technologies": {
-            "founded_year": 2022,
-            "headquarters": "Ames, IA",
-            "stage": "Seed",
-            "mission": "Real-time soil health monitoring",
-        },
-        "CropOptima": {
-            "founded_year": 2020,
-            "headquarters": "Des Moines, IA",
-            "stage": "Series B",
-            "mission": "Optimizing crop yields with predictive analytics",
-        },
-    }
-
-    # Run evaluation
-    results = main(startup_names, startup_infos)
+    # Run evaluation from Step0 startup discovery.
+    results = main()
