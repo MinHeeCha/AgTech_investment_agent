@@ -163,19 +163,18 @@ class ImpactEvaluationAgent(BaseAgent):
 
 if __name__ == "__main__":
     import sys
+    import logging
 
     os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
     from dotenv import load_dotenv
     load_dotenv()
 
-    from rag.retriever import Retriever as _Retriever
+    from app.main import initialize_retriever
 
-    INDEX_DIR = "data/faiss_index"
     startup_name = sys.argv[1] if len(sys.argv) > 1 else "Regrow"
 
-    print(f"Loading FAISS index from {INDEX_DIR} ...")
-    retriever = _Retriever.load_index(INDEX_DIR)
+    retriever = initialize_retriever(logging.getLogger("main"))
 
     agent = ImpactEvaluationAgent()
     result = agent.execute(startup_name, retriever=retriever)

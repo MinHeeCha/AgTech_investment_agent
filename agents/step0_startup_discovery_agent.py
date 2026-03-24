@@ -1,101 +1,96 @@
-"""Startup Discovery Agent - Initial stage of investment evaluation."""
+"""Startup Discovery Agent - Retrieves the list of candidate startups from the vector DB."""
 
-from typing import Optional
-from models import StartupProfile
+import json
+import os
+
+from openai import OpenAI
 from rag import Retriever
 from .base_agent import BaseAgent
 
 
 class StartupDiscoveryAgent(BaseAgent):
-    """Agent responsible for identifying and profiling startup candidates."""
+    """Searches the vector DB for AgTech startup names and returns them as a list."""
 
     def __init__(self):
         super().__init__(
             name="StartupDiscoveryAgent",
-            description="Identifies candidate AgTech startups and gathers core company-level information",
+            description="Retrieves AgTech startup candidates from the vector DB",
         )
+        self._openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    def execute(self, 
-                startup_name: str,
-                retriever: Optional[Retriever] = None,
-                additional_info: Optional[dict] = None) -> StartupProfile:
+    def execute(self, retriever: Retriever) -> list[str]:
         """
-        Discover and profile a startup.
+        Query the vector DB for company listing chunks and extract startup names.
 
         Args:
-            startup_name: Name of the startup to discover
-            retriever: Optional Retriever for gathering information
-            additional_info: Additional information to enrich the profile
+            retriever: Retriever instance backed by the FAISS index
 
         Returns:
-            StartupProfile with discovered information
+            List of startup name strings
         """
         self.start_execution()
-
         try:
-            self.log_info(f"Discovering startup: {startup_name}")
-
-            # Initialize profile with basic info
-            profile = StartupProfile(
-                name=startup_name,
-                founded_year=2022,  # Default, would be fetched from documents
-                headquarters="Unknown",
-                description="AgTech startup focused on innovation",
+            # ── 1. 기업 목록이 담긴 청크 검색 ──────────────────────────
+            docs = self.retrieve_documents(
+                retriever,
+                "AgTech 기업 목록 회사 리스트 Series A Series B",
+                top_k=5,
             )
 
-            # If retriever provided, gather additional information
-            if retriever:
-                docs = self.retrieve_documents(
-                    retriever,
-                    f"About {startup_name} company background founding",
-                    top_k=3
-                )
+            if not docs:
+                self.log_warning("No company listing chunks found in vector DB")
+                return []
 
-                # Extract information from retrieved documents
-                if docs:
-                    self.log_info("Retrieved company information documents")
-                    # In a real implementation, would parse docs for specific info
-                    profile.discovery_source = docs[0].source if docs else None
+            context = "\n\n".join(
+                f"[{i+1}] {doc.content[:800]}" for i, doc in enumerate(docs)
+            )
 
-            # Merge additional information if provided
-            if additional_info:
-                if "founded_year" in additional_info:
-                    profile.founded_year = additional_info["founded_year"]
-                if "headquarters" in additional_info:
-                    profile.headquarters = additional_info["headquarters"]
-                if "website" in additional_info:
-                    profile.website = additional_info["website"]
-                if "founders" in additional_info:
-                    profile.founders = additional_info["founders"]
-                if "mission" in additional_info:
-                    profile.mission = additional_info["mission"]
-                if "stage" in additional_info:
-                    profile.stage = additional_info["stage"]
+            # ── 2. LLM으로 기업명만 추출 ─────────────────────────────────
+            prompt = f"""아래 문서에서 AgTech 스타트업 회사 이름만 추출해서 JSON 배열로 반환하세요.
+회사명 외에 국가, 도시, 설명 등은 포함하지 마세요.
+중복은 제거하세요.
 
-            self.log_info(f"Successfully profiled startup: {profile.name}")
+## 문서
+{context}
 
-            return profile
+## 출력 형식 (JSON 배열만, 다른 텍스트 없이)
+["회사명1", "회사명2", ...]"""
+
+            response = self._openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+
+            raw = json.loads(response.choices[0].message.content)
+
+            # JSON object로 반환될 경우 배열 값 추출
+            if isinstance(raw, dict):
+                names = next(iter(raw.values()))
+            else:
+                names = raw
+
+            self.log_info(f"Discovered {len(names)} startups")
+            return names
 
         finally:
             self.end_execution()
 
-    def batch_discover(self, startup_names: list[str],
-                      retriever: Optional[Retriever] = None) -> list[StartupProfile]:
-        """
-        Discover multiple startups.
 
-        Args:
-            startup_names: List of startup names
-            retriever: Optional Retriever
+if __name__ == "__main__":
+    os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
-        Returns:
-            List of discovered profiles
-        """
-        self.log_info(f"Discovering {len(startup_names)} startups")
-        profiles = []
+    from dotenv import load_dotenv
+    load_dotenv()
 
-        for name in startup_names:
-            profile = self.execute(name, retriever)
-            profiles.append(profile)
+    from app.main import initialize_retriever
+    import logging
 
-        return profiles
+    retriever = initialize_retriever(logging.getLogger("main"))
+    agent = StartupDiscoveryAgent()
+    names = agent.execute(retriever)
+
+    print(f"\n발견된 기업 ({len(names)}개):")
+    for i, name in enumerate(names, 1):
+        print(f"  {i:2d}. {name}")
