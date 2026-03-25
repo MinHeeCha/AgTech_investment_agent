@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  agtech-evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agtech-investment-agent
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/app/logs/app.log
+      # Add your API keys here or use .env file
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    ports:
+      - "8000:8000"  # Adjust if your app uses a different port
+    restart: unless-stopped
+    # Uncomment to run with GPU support
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
