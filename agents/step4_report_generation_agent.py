@@ -1,626 +1,16 @@
-# """Report Generation Agent - Creates polished Korean PDF evaluation reports."""
-
-# import os
-# import sys
-# from datetime import datetime
-# from typing import Optional, List
-
-# try:
-#     from reportlab.lib.pagesizes import A4
-#     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-#     from reportlab.lib.units import cm
-#     from reportlab.lib.colors import HexColor, black, white
-#     from reportlab.lib.enums import TA_LEFT, TA_CENTER
-#     from reportlab.platypus import (
-#         SimpleDocTemplate,
-#         Table,
-#         TableStyle,
-#         Paragraph,
-#         Spacer,
-#         KeepTogether,
-#     )
-#     from reportlab.pdfbase import pdfmetrics
-#     from reportlab.pdfbase.ttfonts import TTFont
-#     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-
-#     REPORTLAB_AVAILABLE = True
-# except ImportError as e:
-#     REPORTLAB_AVAILABLE = False
-#     print(f"Warning: ReportLab import failed: {e}", file=sys.stderr)
-
-# from models import (
-#     FullEvaluationResult,
-#     StartupProfile,
-#     TechnologyAnalysisResult,
-#     MarketabilityAnalysisResult,
-#     ImpactAnalysisResult,
-#     DataMoatAnalysisResult,
-#     CompetitorAnalysisResult,
-#     InvestmentDecision,
-# )
-# from .base_agent import BaseAgent
-
-
-# class ReportGenerationAgent(BaseAgent):
-#     """Final reporting layer: assembles analysis results into text/PDF reports."""
-
-#     def __init__(self):
-#         super().__init__(
-#             name="ReportGenerationAgent",
-#             description="Generates polished Korean business evaluation reports in PDF and text formats",
-#         )
-#         self.pdf_font_name = "Helvetica"
-#         self.pdf_font_name_bold = "Helvetica-Bold"
-#         self._init_fonts()
-
-#         self.color_primary = HexColor("#17365D")
-#         self.color_primary_light = HexColor("#EAF2FF")
-#         self.color_border = HexColor("#D7DDE5")
-#         self.color_text = HexColor("#222222")
-#         self.color_muted = HexColor("#666666")
-#         self.color_success = HexColor("#1F6E43")
-#         self.color_warning = HexColor("#8A6D1D")
-#         self.color_risk = HexColor("#A94442")
-#         self.color_box_bg = HexColor("#F7F9FC")
-#         self.color_section_bg = HexColor("#F3F6FA")
-
-#     # -----------------------------
-#     # Font
-#     # -----------------------------
-#     def _init_fonts(self):
-#         if not REPORTLAB_AVAILABLE:
-#             return
-
-#         try:
-#             candidate_fonts = [
-#                 ("NanumGothic", "/Library/Fonts/NanumGothic.ttf", "/Library/Fonts/NanumGothicBold.ttf"),
-#                 ("AppleGothic", "/System/Library/Fonts/Supplemental/AppleGothic.ttf", None),
-#                 ("NanumGothic", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
-#                 ("NotoSansKR", "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansKR-Bold.ttf"),
-#             ]
-
-#             for font_name, regular_path, bold_path in candidate_fonts:
-#                 if regular_path and os.path.exists(regular_path):
-#                     try:
-#                         pdfmetrics.registerFont(TTFont(font_name, regular_path))
-#                         self.pdf_font_name = font_name
-
-#                         if bold_path and os.path.exists(bold_path):
-#                             bold_font_name = f"{font_name}-Bold"
-#                             pdfmetrics.registerFont(TTFont(bold_font_name, bold_path))
-#                             self.pdf_font_name_bold = bold_font_name
-#                         else:
-#                             self.pdf_font_name_bold = font_name
-
-#                         self.log_info(f"Registered Korean font: {font_name}")
-#                         return
-#                     except Exception as e:
-#                         self.log_warn(f"Failed to register {regular_path}: {e}")
-
-#             try:
-#                 pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
-#                 pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
-#                 self.pdf_font_name = "HeiseiMin-W3"
-#                 self.pdf_font_name_bold = "HeiseiKakuGo-W5"
-#                 self.log_info("Using CID fallback fonts")
-#                 return
-#             except Exception as e:
-#                 self.log_warn(f"CID font fallback failed: {e}")
-
-#         except Exception as e:
-#             self.log_warn(f"Font init failed: {e}")
-
-#     # -----------------------------
-#     # Utilities
-#     # -----------------------------
-#     def _safe_text(self, value, default: str = "확인 필요") -> str:
-#         if value is None:
-#             return default
-#         if isinstance(value, str):
-#             v = value.strip()
-#             return v if v else default
-#         return str(value)
-
-#     def _safe_join(self, items, limit: Optional[int] = None, default: str = "해당 없음") -> str:
-#         if not items:
-#             return default
-#         clean = [self._safe_text(x, "").strip() for x in items if self._safe_text(x, "").strip()]
-#         if not clean:
-#             return default
-#         if limit is not None:
-#             clean = clean[:limit]
-#         return ", ".join(clean)
-
-#     def _safe_percent(self, value, default: str = "확인 필요") -> str:
-#         try:
-#             if value is None:
-#                 return default
-#             return f"{float(value):.1%}"
-#         except Exception:
-#             return default
-
-#     def _escape(self, text: str) -> str:
-#         if text is None:
-#             return ""
-#         return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-#     def _style(
-#         self,
-#         name: str,
-#         parent,
-#         size: int = 10,
-#         color=None,
-#         bold: bool = False,
-#         align: int = TA_LEFT,
-#         leading: Optional[int] = None,
-#         space_after: int = 6,
-#         left_indent: int = 0,
-#     ) -> ParagraphStyle:
-#         return ParagraphStyle(
-#             name=name,
-#             parent=parent,
-#             fontName=self.pdf_font_name_bold if bold else self.pdf_font_name,
-#             fontSize=size,
-#             textColor=color or self.color_text,
-#             alignment=align,
-#             leading=leading or size + 3,
-#             spaceAfter=space_after,
-#             leftIndent=left_indent,
-#         )
-
-#     def _recommendation_text(self, decision) -> str:
-#         try:
-#             if decision.recommendation:
-#                 return decision.recommendation.value.upper()
-#         except Exception:
-#             pass
-#         return self._safe_text(getattr(decision, "recommendation", None), "확인 필요")
-
-#     # -----------------------------
-#     # Main
-#     # -----------------------------
-#     def execute(
-#         self,
-#         startup: StartupProfile,
-#         tech_analysis: TechnologyAnalysisResult,
-#         market_analysis: MarketabilityAnalysisResult,
-#         impact_analysis: ImpactAnalysisResult,
-#         data_moat_analysis: DataMoatAnalysisResult,
-#         competitor_analysis: CompetitorAnalysisResult,
-#         investment_decision: InvestmentDecision,
-#     ) -> FullEvaluationResult:
-#         self.start_execution()
-
-#         try:
-#             self.log_info(f"Generating report for {startup.name}")
-
-#             evaluation = FullEvaluationResult(
-#                 startup=startup,
-#                 technology_analysis=tech_analysis,
-#                 marketability_analysis=market_analysis,
-#                 impact_analysis=impact_analysis,
-#                 data_moat_analysis=data_moat_analysis,
-#                 competitor_analysis=competitor_analysis,
-#                 investment_decision=investment_decision,
-#             )
-
-#             evaluation.report_content = self._generate_text_report(evaluation)
-
-#             if REPORTLAB_AVAILABLE:
-#                 pdf_path = self._generate_pdf_report(evaluation)
-#                 if pdf_path:
-#                     self.log_info(f"PDF report generated: {pdf_path}")
-
-#             return evaluation
-
-#         finally:
-#             self.end_execution()
-
-#     # -----------------------------
-#     # Text report
-#     # -----------------------------
-#     def _generate_text_report(self, evaluation: FullEvaluationResult) -> str:
-#         s = evaluation.startup
-#         t = evaluation.technology_analysis
-#         m = evaluation.marketability_analysis
-#         i = evaluation.impact_analysis
-#         d = evaluation.data_moat_analysis
-#         c = evaluation.competitor_analysis
-#         inv = evaluation.investment_decision
-
-#         lines = []
-#         lines.append("=" * 80)
-#         lines.append("AgTech Startup Investment Evaluation Report")
-#         lines.append("=" * 80)
-#         lines.append("")
-#         lines.append("[Executive Summary]")
-#         lines.append(f"기업명: {self._safe_text(getattr(s, 'name', None))}")
-#         lines.append(f"설립연도: {self._safe_text(getattr(s, 'founded_year', None), '미상')}")
-#         lines.append(f"단계: {self._safe_text(getattr(s, 'stage', None), '미상')}")
-#         lines.append(f"본사: {self._safe_text(getattr(s, 'headquarters', None), '미상')}")
-#         lines.append(f"투자 의견: {self._recommendation_text(inv)}")
-#         lines.append(f"종합 점수: {self._safe_percent(getattr(inv, 'overall_assessment_score', None))}")
-#         lines.append(f"신뢰도: {self._safe_percent(getattr(inv, 'confidence_score', None))}")
-#         lines.append(f"핵심 판단: {self._safe_text(getattr(inv, 'rationale', None), '자료 부족')}")
-#         lines.append("")
-#         lines.append("[Technology]")
-#         lines.append(f"핵심 기술: {self._safe_text(getattr(t, 'core_technology', None))}")
-#         lines.append(f"Novelty: {self._safe_percent(getattr(t, 'novelty_score', None))}")
-#         lines.append(f"Defensibility: {self._safe_percent(getattr(t, 'defensibility_score', None))}")
-#         lines.append(f"특허: {self._safe_join(getattr(t, 'patents', None), limit=5)}")
-#         lines.append(f"논문: {self._safe_join(getattr(t, 'research_papers', None), limit=5)}")
-#         lines.append(f"키워드: {self._safe_join(getattr(t, 'technical_keywords', None), limit=8)}")
-#         lines.append("")
-#         lines.append("[Investment Decision]")
-#         lines.append(f"강점: {self._safe_join(getattr(inv, 'key_strengths', None), limit=5)}")
-#         lines.append(f"리스크: {self._safe_join(getattr(inv, 'key_risks', None), limit=5)}")
-#         lines.append(f"증거 공백: {self._safe_join(getattr(inv, 'evidence_gaps', None), limit=5)}")
-#         lines.append("")
-#         lines.append(f"Generated at: {datetime.now().isoformat()}")
-
-#         return "\n".join(lines)
-
-#     # -----------------------------
-#     # PDF report
-#     # -----------------------------
-#     def _generate_pdf_report(self, evaluation: FullEvaluationResult) -> Optional[str]:
-#         try:
-#             startup_name = self._safe_text(getattr(evaluation.startup, "name", None), "startup")
-#             safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in startup_name)
-#             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-#             pdf_path = os.path.abspath(f"{safe_name}_business_report_{timestamp}.pdf")
-
-#             doc = SimpleDocTemplate(
-#                 pdf_path,
-#                 pagesize=A4,
-#                 rightMargin=1.4 * cm,
-#                 leftMargin=1.4 * cm,
-#                 topMargin=1.2 * cm,
-#                 bottomMargin=1.2 * cm,
-#             )
-
-#             styles = getSampleStyleSheet()
-#             story = []
-
-#             story.extend(self._build_header_block(evaluation, styles))
-#             story.append(Spacer(1, 0.35 * cm))
-#             story.extend(self._build_score_cards(evaluation, styles))
-#             story.append(Spacer(1, 0.25 * cm))
-#             story.extend(self._build_key_message_box(evaluation, styles))
-#             story.append(Spacer(1, 0.25 * cm))
-#             story.extend(self._build_company_overview(evaluation, styles))
-#             story.append(Spacer(1, 0.25 * cm))
-#             story.extend(self._build_analysis_summary_table(evaluation, styles))
-#             story.append(Spacer(1, 0.25 * cm))
-
-#             story.extend(self._build_section_block(
-#                 "Technology Analysis",
-#                 [
-#                     ("핵심 기술", self._safe_text(getattr(evaluation.technology_analysis, "core_technology", None))),
-#                     ("Novelty Score", self._safe_percent(getattr(evaluation.technology_analysis, "novelty_score", None))),
-#                     ("Defensibility Score", self._safe_percent(getattr(evaluation.technology_analysis, "defensibility_score", None))),
-#                     ("특허", self._safe_join(getattr(evaluation.technology_analysis, "patents", None), limit=5)),
-#                     ("논문", self._safe_join(getattr(evaluation.technology_analysis, "research_papers", None), limit=5)),
-#                     ("기술 키워드", self._safe_join(getattr(evaluation.technology_analysis, "technical_keywords", None), limit=8)),
-#                     ("핵심 해석", self._safe_text(getattr(evaluation.technology_analysis, "summary", None), "자료 부족")),
-#                 ],
-#                 styles
-#             ))
-
-#             story.extend(self._build_section_block(
-#                 "Market Analysis",
-#                 [
-#                     ("Target Market", self._safe_text(getattr(evaluation.marketability_analysis, "target_market_size", None), "미확인")),
-#                     ("Growth Potential", self._safe_percent(getattr(evaluation.marketability_analysis, "market_growth_potential", None))),
-#                     ("Commercial Feasibility", self._safe_percent(getattr(evaluation.marketability_analysis, "commercial_feasibility_score", None))),
-#                     ("Business Model", self._safe_text(getattr(evaluation.marketability_analysis, "business_model", None), "미확인")),
-#                     ("Customer Pain Points", self._safe_join(getattr(evaluation.marketability_analysis, "customer_pain_points", None), limit=4)),
-#                     ("Adoption Barriers", self._safe_join(getattr(evaluation.marketability_analysis, "adoption_barriers", None), limit=4)),
-#                     ("핵심 해석", self._safe_text(getattr(evaluation.marketability_analysis, "summary", None), "자료 부족")),
-#                 ],
-#                 styles
-#             ))
-
-#             story.extend(self._build_section_block(
-#                 "Impact Analysis",
-#                 [
-#                     ("Environmental Impact", self._safe_percent(getattr(evaluation.impact_analysis, "environmental_impact", None))),
-#                     ("Agricultural Impact", self._safe_percent(getattr(evaluation.impact_analysis, "agricultural_impact", None))),
-#                     ("Sustainability Focus", self._safe_join(getattr(evaluation.impact_analysis, "sustainability_focus", None), limit=5)),
-#                     ("Efficiency Improvements", self._safe_join(getattr(evaluation.impact_analysis, "efficiency_improvements", None), limit=5)),
-#                     ("Yield Improvement", self._safe_text(getattr(evaluation.impact_analysis, "yield_improvement_claimed", None), "확인 필요")),
-#                     ("Carbon Reduction", self._safe_text(getattr(evaluation.impact_analysis, "carbon_reduction_claimed", None), "확인 필요")),
-#                     ("핵심 해석", self._safe_text(getattr(evaluation.impact_analysis, "summary", None), "자료 부족")),
-#                 ],
-#                 styles
-#             ))
-
-#             story.extend(self._build_section_block(
-#                 "Data Moat Analysis",
-#                 [
-#                     ("Moat Strength", self._safe_percent(getattr(evaluation.data_moat_analysis, "moat_strength_score", None))),
-#                     ("Proprietary Dataset", self._safe_text(getattr(evaluation.data_moat_analysis, "proprietary_dataset_exists", None), "확인 필요")),
-#                     ("Dataset Defensibility", self._safe_percent(getattr(evaluation.data_moat_analysis, "dataset_defensibility_score", None))),
-#                     ("Flywheel Potential", self._safe_percent(getattr(evaluation.data_moat_analysis, "flywheel_potential_score", None))),
-#                     ("Data Sources", self._safe_join(getattr(evaluation.data_moat_analysis, "data_sources", None), limit=5)),
-#                     ("핵심 해석", self._safe_text(getattr(evaluation.data_moat_analysis, "summary", None), "자료 부족")),
-#                 ],
-#                 styles
-#             ))
-
-#             story.extend(self._build_section_block(
-#                 "Competitive Analysis",
-#                 [
-#                     ("Competitive Position", self._safe_percent(getattr(evaluation.competitor_analysis, "competitive_advantage_score", None))),
-#                     ("Comparable Competitors", self._safe_join(getattr(evaluation.competitor_analysis, "comparable_competitors", None), limit=5)),
-#                     ("Technology Differentiation", self._safe_text(getattr(evaluation.competitor_analysis, "technology_differentiation", None), "확인 필요")),
-#                     ("Relative Strengths", self._safe_join(getattr(evaluation.competitor_analysis, "relative_strengths", None), limit=4)),
-#                     ("Relative Weaknesses", self._safe_join(getattr(evaluation.competitor_analysis, "relative_weaknesses", None), limit=4)),
-#                     ("핵심 해석", self._safe_text(getattr(evaluation.competitor_analysis, "summary", None), "자료 부족")),
-#                 ],
-#                 styles
-#             ))
-
-#             story.extend(self._build_risk_strength_gap_boxes(evaluation, styles))
-#             story.append(Spacer(1, 0.2 * cm))
-#             story.extend(self._build_footer(evaluation, styles))
-
-#             doc.build(story)
-#             return pdf_path
-
-#         except Exception as e:
-#             self.log_warn(f"PDF generation failed: {e}")
-#             return None
-
-#     # -----------------------------
-#     # PDF components
-#     # -----------------------------
-#     def _build_header_block(self, evaluation, styles):
-#         startup = evaluation.startup
-
-#         title = self._style("title", styles["Heading1"], size=20, color=self.color_primary, bold=True, align=TA_LEFT, leading=24, space_after=4)
-#         subtitle = self._style("subtitle", styles["Normal"], size=9, color=self.color_muted, align=TA_LEFT, leading=12, space_after=2)
-#         company = self._style("company", styles["Normal"], size=15, color=black, bold=True, align=TA_LEFT, leading=18, space_after=0)
-
-#         box = Table(
-#             [[
-#                 Paragraph("AgTech Startup Investment Report", title),
-#                 Paragraph(
-#                     self._escape(f"{self._safe_text(getattr(startup, 'name', None))}<br/>{self._safe_text(getattr(startup, 'stage', None), '미상')} · {self._safe_text(getattr(startup, 'headquarters', None), '미상')}"),
-#                     company,
-#                 ),
-#                 Paragraph(self._escape("투자 검토용 개괄 보고서"), subtitle),
-#             ]],
-#             colWidths=[18.2 * cm],
-#         )
-#         box.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, -1), self.color_primary_light),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("LEFTPADDING", (0, 0), (-1, -1), 12),
-#             ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-#             ("TOPPADDING", (0, 0), (-1, -1), 12),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-#         ]))
-#         return [box]
-
-#     def _build_score_cards(self, evaluation, styles):
-#         inv = evaluation.investment_decision
-
-#         label = self._style("card_label", styles["Normal"], size=8, color=self.color_muted, align=TA_CENTER, leading=10, space_after=2)
-#         value = self._style("card_value", styles["Normal"], size=13, color=black, bold=True, align=TA_CENTER, leading=16, space_after=0)
-
-#         recommendation = self._recommendation_text(inv)
-#         overall = self._safe_percent(getattr(inv, "overall_assessment_score", None))
-#         confidence = self._safe_percent(getattr(inv, "confidence_score", None))
-
-#         data = [[
-#             Paragraph("Recommendation", label),
-#             Paragraph("Overall Score", label),
-#             Paragraph("Confidence", label),
-#         ], [
-#             Paragraph(self._escape(recommendation), value),
-#             Paragraph(self._escape(overall), value),
-#             Paragraph(self._escape(confidence), value),
-#         ]]
-
-#         table = Table(data, colWidths=[6.05 * cm, 6.05 * cm, 6.05 * cm])
-#         table.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, 0), self.color_section_bg),
-#             ("BACKGROUND", (0, 1), (-1, 1), white),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-#             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-#             ("TOPPADDING", (0, 0), (-1, -1), 10),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-#             ("FONTNAME", (0, 0), (-1, 0), self.pdf_font_name_bold),
-#             ("FONTNAME", (0, 1), (-1, 1), self.pdf_font_name_bold),
-#         ]))
-#         return [table]
-
-#     def _build_key_message_box(self, evaluation, styles):
-#         inv = evaluation.investment_decision
-#         body = self._style("keymsg", styles["Normal"], size=10, color=self.color_text, leading=14, space_after=0)
-
-#         text = (
-#             f"<b>투자 판단 핵심 포인트</b><br/>"
-#             f"{self._escape(self._safe_text(getattr(inv, 'rationale', None), '자료 부족'))}"
-#         )
-
-#         table = Table([[Paragraph(text, body)]], colWidths=[18.2 * cm])
-#         table.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, -1), self.color_box_bg),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("LEFTPADDING", (0, 0), (-1, -1), 12),
-#             ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-#             ("TOPPADDING", (0, 0), (-1, -1), 10),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-#         ]))
-#         return [table]
-
-#     def _build_company_overview(self, evaluation, styles):
-#         s = evaluation.startup
-#         label = self._style("ov_label", styles["Normal"], size=9, color=self.color_muted, bold=True, leading=11)
-#         value = self._style("ov_value", styles["Normal"], size=10, color=self.color_text, leading=13)
-
-#         data = [
-#             [Paragraph("기업명", label), Paragraph(self._escape(self._safe_text(getattr(s, "name", None))), value),
-#              Paragraph("설립연도", label), Paragraph(self._escape(self._safe_text(getattr(s, "founded_year", None), "미상")), value)],
-#             [Paragraph("단계", label), Paragraph(self._escape(self._safe_text(getattr(s, "stage", None), "미상")), value),
-#              Paragraph("본사", label), Paragraph(self._escape(self._safe_text(getattr(s, "headquarters", None), "미상")), value)],
-#         ]
-
-#         table = Table(data, colWidths=[2.3 * cm, 6.8 * cm, 2.3 * cm, 6.8 * cm])
-#         table.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, -1), white),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-#             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-#             ("TOPPADDING", (0, 0), (-1, -1), 8),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-#             ("BACKGROUND", (0, 0), (0, -1), self.color_section_bg),
-#             ("BACKGROUND", (2, 0), (2, -1), self.color_section_bg),
-#         ]))
-#         return [table]
-
-#     def _build_analysis_summary_table(self, evaluation, styles):
-#         t = evaluation.technology_analysis
-#         m = evaluation.marketability_analysis
-#         i = evaluation.impact_analysis
-#         d = evaluation.data_moat_analysis
-#         c = evaluation.competitor_analysis
-
-#         header = self._style("summary_header", styles["Normal"], size=8, color=self.color_muted, bold=True, align=TA_CENTER)
-#         value = self._style("summary_value", styles["Normal"], size=11, color=black, bold=True, align=TA_CENTER)
-
-#         data = [
-#             [
-#                 Paragraph("Technology", header),
-#                 Paragraph("Market", header),
-#                 Paragraph("Impact", header),
-#                 Paragraph("Data Moat", header),
-#                 Paragraph("Competitive", header),
-#             ],
-#             [
-#                 Paragraph(self._escape(self._safe_percent(getattr(t, "novelty_score", None))), value),
-#                 Paragraph(self._escape(self._safe_percent(getattr(m, "commercial_feasibility_score", None))), value),
-#                 Paragraph(self._escape(self._safe_percent(getattr(i, "environmental_impact", None))), value),
-#                 Paragraph(self._escape(self._safe_percent(getattr(d, "moat_strength_score", None))), value),
-#                 Paragraph(self._escape(self._safe_percent(getattr(c, "competitive_advantage_score", None))), value),
-#             ]
-#         ]
-
-#         table = Table(data, colWidths=[3.64 * cm] * 5)
-#         table.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, 0), self.color_section_bg),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-#             ("TOPPADDING", (0, 0), (-1, -1), 8),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-#         ]))
-#         return [table]
-
-#     def _build_section_block(self, title: str, rows: List[tuple], styles):
-#         title_style = self._style(
-#             f"title_{title}",
-#             styles["Heading2"],
-#             size=12,
-#             color=self.color_primary,
-#             bold=True,
-#             leading=15,
-#             space_after=4,
-#         )
-#         label = self._style(f"label_{title}", styles["Normal"], size=8, color=self.color_muted, bold=True, leading=10)
-#         value = self._style(f"value_{title}", styles["Normal"], size=9, color=self.color_text, leading=12)
-
-#         title_bar = Table([[Paragraph(self._escape(title), title_style)]], colWidths=[18.2 * cm])
-#         title_bar.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (-1, -1), self.color_section_bg),
-#             ("BOX", (0, 0), (-1, -1), 0.6, self.color_border),
-#             ("LEFTPADDING", (0, 0), (-1, -1), 10),
-#             ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-#             ("TOPPADDING", (0, 0), (-1, -1), 7),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-#         ]))
-
-#         table_rows = []
-#         for k, v in rows:
-#             table_rows.append([
-#                 Paragraph(self._escape(k), label),
-#                 Paragraph(self._escape(v), value),
-#             ])
-
-#         detail_table = Table(table_rows, colWidths=[4.0 * cm, 14.2 * cm])
-#         detail_table.setStyle(TableStyle([
-#             ("BOX", (0, 0), (-1, -1), 0.6, self.color_border),
-#             ("GRID", (0, 0), (-1, -1), 0.4, self.color_border),
-#             ("BACKGROUND", (0, 0), (0, -1), HexColor("#FAFBFD")),
-#             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-#             ("TOPPADDING", (0, 0), (-1, -1), 6),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-#             ("LEFTPADDING", (0, 0), (-1, -1), 8),
-#             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-#         ]))
-
-#         return [Spacer(1, 0.18 * cm), KeepTogether([title_bar, Spacer(1, 0.08 * cm), detail_table])]
-
-#     def _build_risk_strength_gap_boxes(self, evaluation, styles):
-#         inv = evaluation.investment_decision
-
-#         title = self._style("rsg_title", styles["Normal"], size=9, color=black, bold=True, leading=12)
-#         body = self._style("rsg_body", styles["Normal"], size=9, color=self.color_text, leading=12)
-
-#         strengths = Paragraph(
-#             f"<b>Key Strengths</b><br/>{self._escape(self._safe_join(getattr(inv, 'key_strengths', None), limit=5))}",
-#             body,
-#         )
-#         risks = Paragraph(
-#             f"<b>Key Risks</b><br/>{self._escape(self._safe_join(getattr(inv, 'key_risks', None), limit=5))}",
-#             body,
-#         )
-#         gaps = Paragraph(
-#             f"<b>Evidence Gaps</b><br/>{self._escape(self._safe_join(getattr(inv, 'evidence_gaps', None), limit=5))}",
-#             body,
-#         )
-
-#         table = Table([[strengths, risks, gaps]], colWidths=[6.05 * cm, 6.05 * cm, 6.05 * cm])
-#         table.setStyle(TableStyle([
-#             ("BACKGROUND", (0, 0), (0, 0), HexColor("#F2FBF5")),
-#             ("BACKGROUND", (1, 0), (1, 0), HexColor("#FFF6F5")),
-#             ("BACKGROUND", (2, 0), (2, 0), HexColor("#F8F8FA")),
-#             ("BOX", (0, 0), (-1, -1), 0.8, self.color_border),
-#             ("GRID", (0, 0), (-1, -1), 0.5, self.color_border),
-#             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-#             ("LEFTPADDING", (0, 0), (-1, -1), 10),
-#             ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-#             ("TOPPADDING", (0, 0), (-1, -1), 10),
-#             ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-#         ]))
-#         return [table]
-
-#     def _build_footer(self, evaluation, styles):
-#         footer = self._style("footer", styles["Normal"], size=8, color=self.color_muted, align=TA_CENTER, leading=10, space_after=0)
-#         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-#         return [Paragraph(self._escape(f"Report Generated: {ts}"), footer)]
-
-#     # -----------------------------
-#     # Save text report
-#     # -----------------------------
-#     def save_report(self, evaluation: FullEvaluationResult, filepath: str) -> bool:
-#         try:
-#             with open(filepath, "w", encoding="utf-8") as f:
-#                 f.write(self._safe_text(getattr(evaluation, "report_content", None), ""))
-#             self.log_info(f"Report saved to {filepath}")
-#             return True
-#         except Exception as e:
-#             self.log_warn(f"Failed to save report: {e}")
-#             return False
-
 """Report Generation Agent - 한국어 중심의 PDF 투자평가 보고서 생성."""
 
 import os
 import sys
+import json
 from datetime import datetime
 from typing import Optional, List
+
+try:
+    import anthropic
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -669,6 +59,14 @@ class ReportGenerationAgent(BaseAgent):
         self.pdf_font_name = "Helvetica"
         self.pdf_font_name_bold = "Helvetica-Bold"
         self._init_fonts()
+        
+        # LLM 초기화
+        if LLM_AVAILABLE:
+            self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            self.log_info("LLM (Anthropic) initialized successfully")
+        else:
+            self.client = None
+            self.log_warn("Anthropic not available, LLM features disabled")
 
         self.color_primary = HexColor("#17365D")
         self.color_primary_light = HexColor("#EAF2FF")
@@ -838,9 +236,235 @@ class ReportGenerationAgent(BaseAgent):
             self.end_execution()
 
     # -----------------------------
-    # 텍스트 보고서
+    # 텍스트 보고서 (LLM 활용)
     # -----------------------------
     def _generate_text_report(self, evaluation: FullEvaluationResult) -> str:
+        """LLM을 호출하여 한국어 투자평가 보고서 생성"""
+        try:
+            # 분석 결과를 구조화된 데이터로 준비
+            analysis_data = self._prepare_analysis_data(evaluation)
+            
+            # LLM 호출
+            if self.llm is not None:
+                report = self._generate_report_with_llm(analysis_data)
+                self.log_info("Report generated successfully using LLM")
+                return report
+            else:
+                # LLM 사용 불가시 템플릿 기반 보고서 생성
+                self.log_info("LLM not available, using template-based report")
+                return self._generate_template_report(evaluation)
+                
+        except Exception as e:
+            self.log_warn(f"Error generating report: {e}")
+            return self._generate_template_report(evaluation)
+    
+    def _prepare_analysis_data(self, evaluation: FullEvaluationResult) -> dict:
+        """분석 결과를 LLM 프롬프트용 구조화된 데이터로 변환"""
+        s = evaluation.startup
+        t = evaluation.technology_analysis
+        m = evaluation.marketability_analysis
+        i = evaluation.impact_analysis
+        d = evaluation.data_moat_analysis
+        c = evaluation.competitor_analysis
+        inv = evaluation.investment_decision
+        
+        return {
+            "startup": {
+                "name": self._safe_text(getattr(s, 'name', None)),
+                "founded_year": self._safe_text(getattr(s, 'founded_year', None), '미상'),
+                "stage": self._safe_text(getattr(s, 'stage', None), '미상'),
+                "headquarters": self._safe_text(getattr(s, 'headquarters', None), '미상'),
+            },
+            "technology": {
+                "core_technology": self._safe_text(getattr(t, 'core_technology', None)),
+                "novelty_score": self._safe_percent(getattr(t, 'novelty_score', None)),
+                "defensibility_score": self._safe_percent(getattr(t, 'defensibility_score', None)),
+                "patents": self._safe_join(getattr(t, 'patents', None), limit=5),
+                "research_papers": self._safe_join(getattr(t, 'research_papers', None), limit=5),
+                "technical_keywords": self._safe_join(getattr(t, 'technical_keywords', None), limit=8),
+                "summary": self._safe_text(getattr(t, 'summary', None), "자료 부족"),
+            },
+            "marketability": {
+                "target_market_size": self._safe_text(getattr(m, 'target_market_size', None), "미확인"),
+                "market_growth_potential": self._safe_percent(getattr(m, 'market_growth_potential', None)),
+                "commercial_feasibility_score": self._safe_percent(getattr(m, 'commercial_feasibility_score', None)),
+                "business_model": self._safe_text(getattr(m, 'business_model', None), "미확인"),
+                "customer_pain_points": self._safe_join(getattr(m, 'customer_pain_points', None), limit=4),
+                "adoption_barriers": self._safe_join(getattr(m, 'adoption_barriers', None), limit=4),
+                "summary": self._safe_text(getattr(m, 'summary', None), "자료 부족"),
+            },
+            "impact": {
+                "environmental_impact": self._safe_percent(getattr(i, 'environmental_impact', None)),
+                "agricultural_impact": self._safe_percent(getattr(i, 'agricultural_impact', None)),
+                "sustainability_focus": self._safe_join(getattr(i, 'sustainability_focus', None), limit=5),
+                "efficiency_improvements": self._safe_join(getattr(i, 'efficiency_improvements', None), limit=5),
+                "yield_improvement_claimed": self._safe_text(getattr(i, 'yield_improvement_claimed', None), "확인 필요"),
+                "carbon_reduction_claimed": self._safe_text(getattr(i, 'carbon_reduction_claimed', None), "확인 필요"),
+                "summary": self._safe_text(getattr(i, 'summary', None), "자료 부족"),
+            },
+            "data_moat": {
+                "moat_strength_score": self._safe_percent(getattr(d, 'moat_strength_score', None)),
+                "proprietary_dataset_exists": self._safe_text(getattr(d, 'proprietary_dataset_exists', None), "확인 필요"),
+                "dataset_defensibility_score": self._safe_percent(getattr(d, 'dataset_defensibility_score', None)),
+                "flywheel_potential_score": self._safe_percent(getattr(d, 'flywheel_potential_score', None)),
+                "data_sources": self._safe_join(getattr(d, 'data_sources', None), limit=5),
+                "summary": self._safe_text(getattr(d, 'summary', None), "자료 부족"),
+            },
+            "competitor": {
+                "competitive_advantage_score": self._safe_percent(getattr(c, 'competitive_advantage_score', None)),
+                "comparable_competitors": self._safe_join(getattr(c, 'comparable_competitors', None), limit=5),
+                "technology_differentiation": self._safe_text(getattr(c, 'technology_differentiation', None), "확인 필요"),
+                "relative_strengths": self._safe_join(getattr(c, 'relative_strengths', None), limit=4),
+                "relative_weaknesses": self._safe_join(getattr(c, 'relative_weaknesses', None), limit=4),
+                "summary": self._safe_text(getattr(c, 'summary', None), "자료 부족"),
+            },
+            "investment_decision": {
+                "recommendation": self._recommendation_text(inv),
+                "overall_assessment_score": self._safe_percent(getattr(inv, 'overall_assessment_score', None)),
+                "confidence_score": self._safe_percent(getattr(inv, 'confidence_score', None)),
+                "rationale": self._safe_text(getattr(inv, 'rationale', None), "자료 부족"),
+                "key_strengths": self._safe_join(getattr(inv, 'key_strengths', None), limit=5),
+                "key_risks": self._safe_join(getattr(inv, 'key_risks', None), limit=5),
+                "evidence_gaps": self._safe_join(getattr(inv, 'evidence_gaps', None), limit=5),
+            },
+        }
+    
+    def _generate_report_with_llm(self, analysis_data: dict) -> str:
+        """LLM을 호출하여 보고서 생성"""
+        prompt = self._create_report_prompt(analysis_data)
+        
+        # LLM 호출
+        response = self.llm.invoke(prompt)
+        report_content = response.content
+        
+        return report_content
+    
+    def _create_report_prompt(self, analysis_data: dict) -> str:
+        """보고서 생성을 위한 프롬프트 생성"""
+        prompt = f"""다음 애그테크 스타트업 투자평가 분석 데이터를 기반으로 전문적이고 구조화된 한국어 투자평가 보고서를 작성하세요.
+
+기업정보:
+- 기업명: {analysis_data['startup']['name']}
+- 설립연도: {analysis_data['startup']['founded_year']}
+- 단계: {analysis_data['startup']['stage']}
+- 본사: {analysis_data['startup']['headquarters']}
+
+투자평가 결과:
+- 투자 의견: {analysis_data['investment_decision']['recommendation']}
+- 종합 점수: {analysis_data['investment_decision']['overall_assessment_score']}
+- 신뢰도: {analysis_data['investment_decision']['confidence_score']}
+- 핵심 판단: {analysis_data['investment_decision']['rationale']}
+
+기술 분석:
+- 핵심 기술: {analysis_data['technology']['core_technology']}
+- 참신성: {analysis_data['technology']['novelty_score']}
+- 방어력: {analysis_data['technology']['defensibility_score']}
+- 특허: {analysis_data['technology']['patents']}
+- 논문: {analysis_data['technology']['research_papers']}
+- 기술 키워드: {analysis_data['technology']['technical_keywords']}
+- 해석: {analysis_data['technology']['summary']}
+
+시장성 분석:
+- 목표시장: {analysis_data['marketability']['target_market_size']}
+- 성장 가능성: {analysis_data['marketability']['market_growth_potential']}
+- 사업화 가능성: {analysis_data['marketability']['commercial_feasibility_score']}
+- 비즈니스 모델: {analysis_data['marketability']['business_model']}
+- 고객 문제점: {analysis_data['marketability']['customer_pain_points']}
+- 도입 장벽: {analysis_data['marketability']['adoption_barriers']}
+- 해석: {analysis_data['marketability']['summary']}
+
+임팩트 분석:
+- 환경적 영향: {analysis_data['impact']['environmental_impact']}
+- 농업적 영향: {analysis_data['impact']['agricultural_impact']}
+- 지속가능성 초점: {analysis_data['impact']['sustainability_focus']}
+- 효율 개선: {analysis_data['impact']['efficiency_improvements']}
+- 수확량 개선: {analysis_data['impact']['yield_improvement_claimed']}
+- 탄소 저감: {analysis_data['impact']['carbon_reduction_claimed']}
+- 해석: {analysis_data['impact']['summary']}
+
+데이터 해자 분석:
+- 해자 강도: {analysis_data['data_moat']['moat_strength_score']}
+- 독점 데이터셋: {analysis_data['data_moat']['proprietary_dataset_exists']}
+- 방어력: {analysis_data['data_moat']['dataset_defensibility_score']}
+- 축적 효과: {analysis_data['data_moat']['flywheel_potential_score']}
+- 데이터 원천: {analysis_data['data_moat']['data_sources']}
+- 해석: {analysis_data['data_moat']['summary']}
+
+경쟁력 분석:
+- 경쟁우위: {analysis_data['competitor']['competitive_advantage_score']}
+- 비교 경쟁사: {analysis_data['competitor']['comparable_competitors']}
+- 기술 차별성: {analysis_data['competitor']['technology_differentiation']}
+- 상대적 강점: {analysis_data['competitor']['relative_strengths']}
+- 상대적 약점: {analysis_data['competitor']['relative_weaknesses']}
+- 해석: {analysis_data['competitor']['summary']}
+
+투자심사 평가:
+- 주요 강점: {analysis_data['investment_decision']['key_strengths']}
+- 주요 리스크: {analysis_data['investment_decision']['key_risks']}
+- 증거 공백: {analysis_data['investment_decision']['evidence_gaps']}
+
+다음 형식으로 보고서를 작성하세요:
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                             애그테크 스타트업 투자 평가 보고서                
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─ [기업명] / [단계] / [본사] ─┐
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 투자평가 점수카드 ─⋯┐
+│
+│  투자 의견: [의견]  │ 종합 점수: [점수]  │ 신뢰도: [신뢰도]  │
+│
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 투자 판단 핵심 포인트 ─┐
+│
+│ [핵심 판단 내용]
+│
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 기업 개요 ─┐
+│ 기업명: [기업명]  │ 설립연도: [연도]  │
+│ 단계: [단계]  │ 본사: [본사]  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 5대 분석 영역 점수 요약 ─┐
+│ 기술: [점수]  │ 시장성: [점수]  │ 임팩트: [점수]  │ 데이터해자: [점수]  │ 경쟁력: [점수]  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌─ 기술 분석 ─┐
+│
+│ 핵심 기술    : [기술]
+│ 참신성       : [점수]
+│ 방어력       : [점수]
+│ 특허         : [특허]
+│ 논문         : [논문]
+│ 기술 키워드  : [키워드]
+│ 핵심 해석    : [해석]
+│
+└────────────────────────────────────────────────────────────────────────────┘
+
+[시장성 분석, 임팩트 분석, 데이터 해자 분석, 경쟁력 분석도 동일한 형식으로 작성]
+
+┌─ 투자심사 평가 요소 ─┐
+│
+│ [주요 강점]
+│ [주요 리스크]
+│ [증거 공백]
+│
+└────────────────────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────────────
+보고서 생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+───────────────────────────────────────────────────────────────────────────────
+"""
+        return prompt
+    
+    def _generate_template_report(self, evaluation: FullEvaluationResult) -> str:
+        """LLM 없을 때 사용할 템플릿 기반 보고서 생성"""
         s = evaluation.startup
         t = evaluation.technology_analysis
         m = evaluation.marketability_analysis
